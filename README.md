@@ -1,2 +1,0 @@
-# IPRE-Segmentacion-
-IPRE - Segmentación 
