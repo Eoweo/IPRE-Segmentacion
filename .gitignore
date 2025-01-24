@@ -86,3 +86,4 @@ Thumbs.db
 # Ignore the private folder
 private/
 Database/
+.pth
