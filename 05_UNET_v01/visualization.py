@@ -15,8 +15,8 @@ class Report:
         self.result_dir = RESULT_DIR
         self.n_epochs = n_epochs
         self.Accuracy = torch.tensor(Accuracy, dtype=torch.float32).reshape(-1)
-        self.epoch_data_avgd = self.epoch  # Adjust as needed for averaging
-        self.loss_data_avgd = self.loss   # Adjust as needed for averaging
+        self.epoch_data_avgd = self.epoch.reshape(self.n_epochs,-1).mean(axis=1)
+        self.loss_data_avgd = self.loss.reshape(self.n_epochs,-1).mean(axis=1)
 
     def plot(self):
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
@@ -169,7 +169,6 @@ def Menu():
             epoch_data, loss_data, Accurasy_data = train_model(train_dl, model, device, n_epochs=p.EPOCHS)
             
             acurracy = CheckAccuracy(test_dl, model, device)
-            print(input(f"Test accuracy obtain: {acurracy[-1]}"))
 
             if save_model:
                 model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
@@ -178,9 +177,10 @@ def Menu():
 
             # Visualize predictions
             if save_plots:
-                plot_predictions_interactive(model, test_dl, device=device)
                 Analisis = Report(epoch_data, loss_data, Accurasy_data,  p.EPOCHS)
                 Analisis.plot()
+                plot_predictions_interactive(model, test_dl, device=device)
+            print((f"Test accuracy obtain: {acurracy:.4f}"))
 
         elif option == "4":
             print("Exiting the program.")
@@ -204,9 +204,9 @@ def Menu():
             model = UNet(in_channels=1, out_channels=1).to(device)
             model_path = "model.pth"
             model.load_state_dict(torch.load(model_path, weights_only=True))
-            plot_predictions_interactive(model, test_dl, device=device)
+            #plot_predictions_interactive(model, test_dl, device=device)
             acurracy = CheckAccuracy(test_dl, model, device)
-            print(input(f"Test accuracy obtain: {sum(acurracy) / float(len(acurracy))}"))
+            print(input(f"Test accuracy obtain: {acurracy}"))
 
         else:
             print("Invalid option. Please try again.")

@@ -29,7 +29,7 @@ def CheckAccuracy(loader, model, device):
             dice_scores.append(dice.mean().item())
 
     model.train()
-    return dice_scores
+    return sum(dice_scores)/len(dice_scores)
 
 def calculate_class_weights(mask):
 
@@ -91,7 +91,7 @@ def train_model(dl, model, device, n_epochs):
             pbar.set_postfix({
                 "Epoch": f"{epoch + 1}/{n_epochs}",
                 "Last Batch Loss": f"{loss.item():.4f}",
-                "Accurasy": f"{accuracy[-1][-1]:.4f}",
+                "Accurasy": f"{accuracy[-1]:.4f}",
                 "Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
             })
 
