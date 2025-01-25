@@ -187,6 +187,9 @@ def Menu():
             break
         elif option == "5":
 
+            input("Please place the file named as model.pth in the same folder as main.py and then press ENTER")
+            save_plots = input("Do you want to save the prediction plots? (yes/no): ").strip().lower() in "yes"
+            
             if dataset_choice == "EPFL - Mitocondria Electron Microscopy":
                 train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset('Database\\EPFL')
             elif dataset_choice == "Chest CT Segmentation":
@@ -195,9 +198,6 @@ def Menu():
                 print("Invalid dataset choice.")
                 continue
             
-            input("Please place the file named as model.pth in the same folder as main.py and then press ENTER")
-            save_plots = input("Do you want to save the prediction plots? (yes/no): ").strip().lower() in "yes"
-
             test_dataset = MainDataset(test_ds, test_mask_ds, False)
             test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True)
             
