@@ -196,6 +196,7 @@ def Menu():
                 continue
             
             input("Please place the file named as model.pth in the same folder as main.py and then press ENTER")
+            save_plots = input("Do you want to save the prediction plots? (yes/no): ").strip().lower() in "yes"
 
             test_dataset = MainDataset(test_ds, test_mask_ds, False)
             test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True)
@@ -204,7 +205,8 @@ def Menu():
             model = UNet(in_channels=1, out_channels=1).to(device)
             model_path = "model.pth"
             model.load_state_dict(torch.load(model_path, weights_only=True))
-            #plot_predictions_interactive(model, test_dl, device=device)
+            if save_plots:
+                plot_predictions_interactive(model, test_dl, device=device)
             acurracy = CheckAccuracy(test_dl, model, device)
             print(input(f"Test accuracy obtain: {acurracy}"))
 
