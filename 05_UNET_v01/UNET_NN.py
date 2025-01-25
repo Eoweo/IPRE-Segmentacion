@@ -16,32 +16,6 @@ from PIL import Image
 import numpy as np
 from ipywidgets import interact
 
-#Dataset load function
-
-def Set_tif_Dataset(path, width= 512, height= 512):
-    images_list = []
-
-    with Image.open(path) as img:
-        try:
-            while True:
-                # Convert each page to an RGB image
-                img_rgb = img.convert("L")
-
-                # Resize to the desired dimensions
-                img_resized = img_rgb.resize((width, height))
-
-                # Convert to a NumPy array and normalize pixel values to [0, 255]
-                img_array = np.array(img_resized)/255.0
-
-                # Add to the list
-                images_list.append(img_array)
-
-                # Move to the next page
-                img.seek(img.tell() + 1)
-        except EOFError:
-            pass  # End of the TIFF file
-    return np.stack(images_list[:200])
-
 def set_tif_dataset(abs_path, width=512, height=512):
 
     training_file = os.path.join(abs_path, 'training.tif')
@@ -355,7 +329,10 @@ class Report:
         axes[1].legend()
 
         plt.tight_layout()
-        plt.show()
+        save_path = os.path.join(RESULT_DIR, f'{self.type}_Report.png')
+        plt.savefig(save_path)
+        print(f"Saved plot to {save_path}")
+        plt.close()  # Close the plot to avoid memory issues
 
 def plot_predictions_interactive(model, loader, device='cuda'):
     model.eval()
@@ -375,7 +352,7 @@ def plot_predictions_interactive(model, loader, device='cuda'):
             ground_truths.extend(y.cpu().numpy())
             predictions.extend(y_hat)
 
-    def show_sample(idx):
+    def save_sample(idx):
         fig, axes = plt.subplots(1, 3, figsize=(20, 10))
 
         axes[0].imshow(inputs[idx], cmap='gray')
@@ -390,33 +367,24 @@ def plot_predictions_interactive(model, loader, device='cuda'):
         axes[2].set_title("Predicted Mask")
         axes[2].axis('off')
 
-        plt.show()
+        save_path = os.path.join(RESULT_DIR, f'Prediction_{idx}.png')
+        plt.savefig(save_path)
+        print(f"Saved prediction to {save_path}")
+        plt.close()  # Close the plot to avoid memory issues
 
-    # Create interactive slider
-    interact(show_sample, idx=(0, len(inputs) - 1))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # Save all plots
+    for idx in range(len(inputs)):
+        save_sample(idx)
 
 
 
 save = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(torch.cuda.get_device_name())
+
+# Ensure the Result directory exists
+RESULT_DIR = "Result"
+os.makedirs(RESULT_DIR, exist_ok=True)
 
 block_id =[
     "ID00035637202182204917484",
