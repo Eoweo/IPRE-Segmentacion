@@ -6,10 +6,12 @@ from PIL import Image
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from torchvision.transforms.functional import rotate
 import random
 import time
+import parameter as p
 
-def set_tif_dataset(abs_path, target_size= (128, 128)):
+def set_tif_dataset(abs_path):
 
     training_file = os.path.join(abs_path, 'training.tif')
     training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
@@ -21,28 +23,20 @@ def set_tif_dataset(abs_path, target_size= (128, 128)):
         try:
             with Image.open(file_path) as img:
                 while True:
-                    # Convert each page to a grayscale image
                     img_gray = img.convert("L")
+                    if p.RESIZE:
+                        img_resized = img_gray.resize(p.RESIZE_VALUE)
 
-                    # Resize to the desired dimensions
-                    img_resized = img_gray.resize(target_size)
+                    images_list.append(np.array(img_resized) / 255.0)
 
-                    # Convert to a NumPy array and normalize pixel values to [0, 1]
-                    img_array = np.array(img_resized) / 255.0
-
-                    # Add to the list
-                    images_list.append(img_array)
-
-                    # Move to the next page
                     img.seek(img.tell() + 1)
         except EOFError:
-            pass  # End of the TIFF file
+            pass  
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file_path}")
 
         return np.stack(images_list) if images_list else None
 
-    # Process each file
     training = process_tif(training_file)
     training_mask = process_tif(training_mask_file)
     test = process_tif(testing_file)
@@ -50,7 +44,7 @@ def set_tif_dataset(abs_path, target_size= (128, 128)):
 
     return test, test_mask, training, training_mask
 
-def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id = [] ):
+def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id = p.BLOCK_ID ):
     csv_path = os.path.join(abs_path, 'train.csv')
     data = pd.read_csv(csv_path)
     data = data[:2000]
@@ -80,12 +74,14 @@ def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id
 
             # Load and process the image
             image = Image.open(os.path.join(image_dir, image_name)).convert("L")
-            image = image.rotate(angle)
-            image = np.array(image.resize(target_size)) / 255.0
-
             mask = Image.open(os.path.join(mask_dir, mask_name)).convert("RGB")
-            mask = mask.rotate(angle)
-            mask = np.array(mask.resize(target_size)) / 255.0
+
+            if p.RESIZE:            
+                image = np.array(image.resize(p.RESIZE_VALUE)) / 255.0
+                mask = np.array(mask.resize(p.RESIZE_VALUE)) / 255.0
+            else:
+                image = np.array(image) / 255.0
+                mask = np.array(mask) / 255.0
 
             threshold = 0.2  # Adjust as needed
             mask = (mask[:, :, 2] > threshold) * mask[:, :, 2]
@@ -125,11 +121,26 @@ def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id
 
     return train_images, train_masks, test_images, test_masks
 
-
 class MainDataset(Dataset):
-    def __init__(self, images, masks):
+    def __init__(self, images, masks, is_rotation):
         self.images = images
         self.masks = masks
+
+        if is_rotation:
+            rotated_images = []
+            rotated_masks = []
+
+            for img, mask in zip(images, masks):
+                angle = random.uniform(0, 270)
+                
+                img_rotated = rotate(torch.tensor(img, dtype=torch.float32).unsqueeze(0), float(angle), interpolation=Image.BILINEAR, fill= 0)
+                mask_rotated = rotate(torch.tensor(mask, dtype=torch.float32).unsqueeze(0), angle, interpolation=Image.BILINEAR)
+
+                rotated_images.append(img_rotated.squeeze(0).numpy())
+                rotated_masks.append(mask_rotated.squeeze(0).numpy())
+
+            self.images = np.concatenate((self.images, np.array(rotated_images)), axis=0)
+            self.masks = np.concatenate((self.masks, np.array(rotated_masks)), axis=0)
 
     def __len__(self):
         return len(self.images)

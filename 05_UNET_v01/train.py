@@ -5,7 +5,7 @@ import torch
 from torch.optim import Adam
 import torch.nn as nn
 
-def CheckAccuracy(loader, model, device='cuda'):
+def CheckAccuracy(loader, model, device):
     dice_scores = []
     model.eval()
 
@@ -27,7 +27,7 @@ def CheckAccuracy(loader, model, device='cuda'):
     model.train()
     return dice_scores
 
-def train_model(dl, model, n_epochs=20, device='cuda'):
+def train_model(dl, model, device, n_epochs):
     # Optimization
     opt = Adam(model.parameters(), lr=3e-4)  # karpathy's constant
     criterion = nn.CrossEntropyLoss()  # Binary cross-entropy loss with logits
@@ -67,7 +67,7 @@ def train_model(dl, model, n_epochs=20, device='cuda'):
             time_per_step = elapsed_time / pbar.n if pbar.n > 0 else 0
             estimated_time_left = time_per_step * remaining_steps
 
-            accuracy.append(CheckAccuracy(dl, model, "Train Data", device=device))
+            accuracy.append(CheckAccuracy(dl, model, device))
 
             # Set progress bar postfix with estimated time left
             pbar.set_postfix({

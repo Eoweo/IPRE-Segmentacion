@@ -1,12 +1,17 @@
 import os
 import matplotlib.pyplot as plt
 import torch
+import parameter as p
+from dataset import set_tif_dataset, set_jpg_Dataset, MainDataset
+from train import train_model
+from model import UNet
+from torch.utils.data import DataLoader
 
 class Report:
-    def __init__(self, epoch, loss, Accuracy, RESULT_DIR = "Result", n_epochs=20):
+    def __init__(self, epoch, loss, Accuracy, n_epochs, RESULT_DIR = "Result"):
         self.epoch = epoch
         self.loss = loss
-        self.type = type
+        self.type = "Training"
         self.result_dir = RESULT_DIR
         self.n_epochs = n_epochs
         self.Accuracy = torch.tensor(Accuracy, dtype=torch.float32).reshape(-1)
@@ -78,3 +83,123 @@ def plot_predictions_interactive(model, loader, RESULT_DIR = "Result", device='c
     # Save all plots
     for idx in range(len(inputs)):
         save_sample(idx)
+
+
+def Menu():
+
+
+    print("Initializing Menu...")
+    while True:
+        print("\n==== UNET Neural Network ====")
+        print("""
+        [1] Choose Test Dataset
+        [2] View or Modify Parameters
+        [3] Run Neural Network
+        [4] Exit Program
+        """)
+        option = input("Please select an option (1, 2, 3, or 4): ").strip()
+
+        if option == "1":
+            # Choose a test dataset
+            print("\nAvailable Test Datasets:")
+            for i, test in enumerate(p.TEST_AVAILABLE, start=1):
+                print(f"[{i}] {test}")
+            selected = int(input("Choose a test dataset (e.g., 1 or 2): ").strip())
+            dataset_choice = p.TEST_AVAILABLE[selected - 1]
+            print(f"You selected: {dataset_choice}")
+
+        elif option == "2":
+            # View or modify parameters
+            print("\nCurrent Parameters:")
+            for attr in dir(p):
+                if not attr.startswith("__"):
+                    print(f"{attr}: {getattr(p, attr)}")
+
+            while True:
+                change = input("\nWould you like to change a parameter? (yes/no): ").strip().lower()
+                if change in "yes":
+                    param_to_change = input("Enter the name of the parameter to change: ").strip().upper()
+                    if hasattr(p, param_to_change):
+                        new_value = input(f"Enter a new value for {param_to_change}: ").strip()
+                        try:
+                            # Update the parameter
+                            value = eval(new_value)  # Convert string to the appropriate data type
+                            setattr(p, param_to_change, value)
+                            print(f"Updated {param_to_change} to {value}")
+                        except Exception as e:
+                            print(f"Error updating parameter: {e}")
+                    else:
+                        print("Invalid parameter name.")
+                elif change in "no":
+                    print("Exiting parameter modification.")
+                    break
+                else:
+                    print("Invalid input. Please type 'yes' or 'no'.")
+
+        elif option == "3":
+            # Run the neural network
+            save_model = input("Do you want to save the trained model? (yes/no): ").strip().lower() in "yes"
+            save_plots = input("Do you want to save the prediction plots? (yes/no): ").strip().lower() in "yes"
+
+            # Load the dataset
+            if dataset_choice == "EPFL - Mitocondria Electron Microscopy":
+                train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset('Database\\EPFL')
+            elif dataset_choice == "Chest CT Segmentation":
+                train_ds, train_mask_ds, test_ds, test_mask_ds = set_jpg_Dataset('Database\\CT-Chest\\Marco Polo\\archive')
+            else:
+                print("Invalid dataset choice.")
+                continue
+
+            # Prepare datasets and dataloaders
+            train_dataset = MainDataset(train_ds[:p.CHOP_VALUE], train_mask_ds[:p.CHOP_VALUE], p.ROTATION)
+            test_dataset = MainDataset(test_ds, test_mask_ds, False)
+
+            train_dl = DataLoader(train_dataset, batch_size=p.BATCH_SIZE, shuffle=p.SHUFFLE, pin_memory=True)
+            test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True)
+
+            # Initialize the model
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model = UNet(in_channels=1, out_channels=2).to(device)
+
+            # Train the model
+            epoch_data, loss_data, Accurasy_data = train_model(train_dl, model, device, n_epochs=p.EPOCHS)
+
+            # Save the model
+            if save_model:
+                model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
+                torch.save(model.state_dict(), model_path)
+                print(f"Model saved to {model_path}")
+
+            # Visualize predictions
+            if save_plots:
+                plot_predictions_interactive(model, test_dl, device=device)
+                Analisis = Report(epoch_data, loss_data, Accurasy_data,  p.EPOCHS)
+                Analisis.plot()
+
+        elif option == "4":
+            print("Exiting the program.")
+            break
+        elif option == "5":
+
+            if dataset_choice == "EPFL - Mitocondria Electron Microscopy":
+                train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset('Database\\EPFL')
+            elif dataset_choice == "Chest CT Segmentation":
+                train_ds, train_mask_ds, test_ds, test_mask_ds = set_jpg_Dataset('Database\\CT-Chest\\Marco Polo\\archive')
+            else:
+                print("Invalid dataset choice.")
+                continue
+            
+            input("Please place the file named as model.pth in the same folder as main.py and then press ENTER")
+
+            test_dataset = MainDataset(test_ds, test_mask_ds, False)
+            test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True)
+            
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model = UNet(in_channels=1, out_channels=2).to(device)
+            model_path = "model.pth"
+            model.load_state_dict(torch.load(model_path))
+            plot_predictions_interactive(model, test_dl, device=device)
+            Analisis = Report(epoch_data, loss_data, Accurasy_data,  p.EPOCHS)
+            Analisis.plot()
+        else:
+            print("Invalid option. Please try again.")
