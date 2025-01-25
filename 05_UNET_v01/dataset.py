@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 import random
 import time
 
-def set_tif_dataset(abs_path, width=512, height=512):
+def set_tif_dataset(abs_path, target_size= (128, 128)):
 
     training_file = os.path.join(abs_path, 'training.tif')
     training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
@@ -25,7 +25,7 @@ def set_tif_dataset(abs_path, width=512, height=512):
                     img_gray = img.convert("L")
 
                     # Resize to the desired dimensions
-                    img_resized = img_gray.resize((width, height))
+                    img_resized = img_gray.resize(target_size)
 
                     # Convert to a NumPy array and normalize pixel values to [0, 1]
                     img_array = np.array(img_resized) / 255.0

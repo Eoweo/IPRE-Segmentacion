@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import torch
 
 class Report:
-    def __init__(self, epoch, loss, Accuracy, RESULT_DIR = "Result", type="Training", n_epochs=20):
+    def __init__(self, epoch, loss, Accuracy, RESULT_DIR = "Result", n_epochs=20):
         self.epoch = epoch
         self.loss = loss
         self.type = type

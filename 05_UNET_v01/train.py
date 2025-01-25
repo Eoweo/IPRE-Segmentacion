@@ -5,7 +5,7 @@ import torch
 from torch.optim import Adam
 import torch.nn as nn
 
-def CheckAccuracy(loader, model, name, device='cuda'):
+def CheckAccuracy(loader, model, device='cuda'):
     dice_scores = []
     model.eval()
 
@@ -41,7 +41,7 @@ def train_model(dl, model, n_epochs=20, device='cuda'):
     epochs = []
     accuracy = []
 
-    with tqdm(total=total_steps, desc="Training Progress", dynamic_ncols=True, leave=True) as pbar:
+    with tqdm(total=total_steps, dynamic_ncols=True, leave=True) as pbar:
         for epoch in range(n_epochs):
             model.train()
             N = len(dl)
