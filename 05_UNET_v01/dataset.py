@@ -47,7 +47,7 @@ def set_tif_dataset(abs_path):
 def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id = p.BLOCK_ID ):
     csv_path = os.path.join(abs_path, 'train.csv')
     data = pd.read_csv(csv_path)
-    data = data[:2000]
+    data = data[:]
 
     image_dir = os.path.join(abs_path,'images/', 'images/')
     mask_dir =  os.path.join(abs_path,'masks/', 'masks/' ) 
@@ -132,7 +132,7 @@ class MainDataset(Dataset):
 
             for img, mask in zip(images, masks):
                 angle = random.uniform(0, 270)
-                
+
                 img_rotated = rotate(torch.tensor(img, dtype=torch.float32).unsqueeze(0), float(angle), interpolation=Image.BILINEAR, fill= 0)
                 mask_rotated = rotate(torch.tensor(mask, dtype=torch.float32).unsqueeze(0), angle, interpolation=Image.BILINEAR)
 

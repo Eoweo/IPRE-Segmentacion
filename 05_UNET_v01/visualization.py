@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import torch
 import parameter as p
 from dataset import set_tif_dataset, set_jpg_Dataset, MainDataset
-from train import train_model
+from train import train_model, CheckAccuracy
 from model import UNet
 from torch.utils.data import DataLoader
 
@@ -53,12 +53,16 @@ def plot_predictions_interactive(model, loader, RESULT_DIR = "Result", device='c
 
             # Model prediction
             y_hat = model(x)
-            y_hat = torch.argmax(y_hat, dim=1).cpu().numpy()  # Convert logits to class labels
+
+            if len(y_hat.shape) == 4 and y_hat.shape[1] > 1:  # Multi-class output
+                y_hat = torch.argmax(y_hat, dim=1)  # Convert logits to class labels
+            elif len(y_hat.shape) == 4 and y_hat.shape[1] == 1:  # Binary segmentation
+                y_hat = (y_hat > 0).float().squeeze(1)  # Threshold logits at 0.0
 
             # Store data for visualization
             inputs.extend(x[:, 0].cpu().numpy())
             ground_truths.extend(y.cpu().numpy())
-            predictions.extend(y_hat)
+            predictions.extend(y_hat.cpu())
 
     def save_sample(idx):
         fig, axes = plt.subplots(1, 3, figsize=(20, 10))
@@ -159,12 +163,14 @@ def Menu():
 
             # Initialize the model
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model = UNet(in_channels=1, out_channels=2).to(device)
+            model = UNet(in_channels=1, out_channels=1).to(device)
 
             # Train the model
             epoch_data, loss_data, Accurasy_data = train_model(train_dl, model, device, n_epochs=p.EPOCHS)
+            
+            acurracy = CheckAccuracy(test_dl, model, device)
+            print(input(f"Test accuracy obtain: {acurracy[-1]}"))
 
-            # Save the model
             if save_model:
                 model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
                 torch.save(model.state_dict(), model_path)
@@ -195,11 +201,12 @@ def Menu():
             test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True)
             
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model = UNet(in_channels=1, out_channels=2).to(device)
+            model = UNet(in_channels=1, out_channels=1).to(device)
             model_path = "model.pth"
-            model.load_state_dict(torch.load(model_path))
+            model.load_state_dict(torch.load(model_path, weights_only=True))
             plot_predictions_interactive(model, test_dl, device=device)
-            Analisis = Report(epoch_data, loss_data, Accurasy_data,  p.EPOCHS)
-            Analisis.plot()
+            acurracy = CheckAccuracy(test_dl, model, device)
+            print(input(f"Test accuracy obtain: {sum(acurracy) / float(len(acurracy))}"))
+
         else:
             print("Invalid option. Please try again.")

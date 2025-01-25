@@ -16,8 +16,12 @@ def CheckAccuracy(loader, model, device):
 
             # Model prediction
             y_hat = model(x)
-            y_hat = torch.argmax(y_hat, dim=1)  # Convert logits to class labels
 
+            if len(y_hat.shape) == 4 and y_hat.shape[1] > 1:  # Multi-class output
+                y_hat = torch.argmax(y_hat, dim=1)  # Convert logits to class labels
+            elif len(y_hat.shape) == 4 and y_hat.shape[1] == 1:  # Binary segmentation
+                y_hat = (y_hat > 0).float().squeeze(1)  # Threshold logits at 0.0
+            
             # Calculate Dice Score
             intersection = (y_hat * y).sum(dim=(1, 2))
             union = y_hat.sum(dim=(1, 2)) + y.sum(dim=(1, 2))
@@ -27,10 +31,24 @@ def CheckAccuracy(loader, model, device):
     model.train()
     return dice_scores
 
+def calculate_class_weights(mask):
+
+    mask_flat = mask.flatten()
+    
+
+    total_pixels = mask_flat.numel()
+    foreground_pixels = mask_flat.sum().item()
+    background_pixels = total_pixels - foreground_pixels
+    
+    background_weight = foreground_pixels / total_pixels
+    foreground_weight = background_pixels / total_pixels
+    
+    return torch.tensor([background_weight, foreground_weight])
+
 def train_model(dl, model, device, n_epochs):
     # Optimization
     opt = Adam(model.parameters(), lr=3e-4)  # karpathy's constant
-    criterion = nn.CrossEntropyLoss()  # Binary cross-entropy loss with logits
+    criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy loss with logits
 
     # Initialize progress bar and timing
     start_time = time.time()
@@ -47,7 +65,7 @@ def train_model(dl, model, device, n_epochs):
             N = len(dl)
 
             for i, (x, y) in enumerate(dl):
-                x, y = x.to(device), y.to(device).squeeze(1).long()  # Convert mask to [B, H, W] and integer type
+                x, y = x.to(device), y.to(device).squeeze(1)#.long()  # Convert mask to [B, H, W] and integer type
                 opt.zero_grad()
                 outputs = model(x)
                 loss = criterion(outputs, y)

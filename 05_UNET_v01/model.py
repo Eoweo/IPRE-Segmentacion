@@ -69,5 +69,5 @@ class UNet(nn.Module):
         d3 = self.decoder3(d2.to(device), s2.to(device))
         d4 = self.decoder4(d3.to(device), s1.to(device))
 
-        outputs = torch.sigmoid(self.out_conv(d4.to(device)))  # Binary (can be adapted for multiclass)
+        outputs = torch.sigmoid(self.out_conv(d4.to(device))).squeeze(1)  # Binary (can be adapted for multiclass)
         return outputs
