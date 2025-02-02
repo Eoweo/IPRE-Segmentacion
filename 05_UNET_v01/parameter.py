@@ -1,3 +1,4 @@
+import os
 #PARAMETROS
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
@@ -21,6 +22,6 @@ SHUFFLE = True
 MULTI_CLASS = False
 
 #RESULT
-RESULT_DIR = "RESULT"
+RESULT_DIR = os.path.join("mnt", "workspace", "cmorenor", "RESULT")
 
 

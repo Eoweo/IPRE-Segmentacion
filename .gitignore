@@ -86,5 +86,6 @@ Thumbs.db
 # Ignore the private folder
 private/
 Database/
+05_UNET_v01/RESULT
 *.pth
 *.zip
