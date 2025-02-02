@@ -14,16 +14,16 @@ BLOCK_ID = ["ID00035637202182204917484",
 #VARIABLE
 ROTATION = True
 RESIZE = True
-RESIZE_VALUE = (256,256)
+RESIZE_VALUE = (512,512)
 CHOP_VALUE = None
-EPOCHS = 6
+EPOCHS = 20
 BATCH_SIZE = 8
 SHUFFLE = True  
 MULTI_CLASS = False
 
 #RESULT
-RESULT_DIR = os.path.join("mnt", "workspace", "cmorenor", "RESULT")
-PATH_DATASET = os.path.join('mnt','researchers','marcelo-andia','datasets')
+RESULT_DIR = os.path.join("/mnt", "workspace", "cmorenor", "RESULT")
+PATH_DATASET = os.path.join('/mnt','researchers','marcelo-andia','datasets')
 PATH_CT_MARCOPOLO = os.path.join(PATH_DATASET,'CT-Chest', 'Marco Polo')
 PATH_EPFL = os.path.join(PATH_DATASET,'EPFL')
 

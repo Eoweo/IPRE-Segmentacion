@@ -23,18 +23,18 @@ def get_next_zip_name(base_name="result_v0", folder=".", ext=".zip"):
             return zip_name
         version += 1
 
-def compress_folder(folder_to_zip, output_folder="."):
+def compress_folder(folder_to_zip):
     """Compress a folder into a uniquely named zip file."""
     # Ensure the folder exists
     if not os.path.exists(folder_to_zip):
         print(f"Error: Folder '{folder_to_zip}' does not exist.")
         return
 
-    parent_directory = os.path.dirname(folder_to_zip)
-
     # Generate unique zip file name
-    zip_name = get_next_zip_name(folder=parent_directory)
-    zip_path = os.path.join(output_folder, zip_name)
+    zip_name = get_next_zip_name(folder=folder_to_zip)
+    print(folder_to_zip)
+    print(zip_name)
+    zip_path = os.path.join(folder_to_zip, zip_name)
     
     # Compress the folder
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
