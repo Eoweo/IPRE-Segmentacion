@@ -6,6 +6,8 @@ from dataset import set_tif_dataset, set_jpg_Dataset, MainDataset
 from train import train_model, CheckAccuracy
 from model import UNet
 from torch.utils.data import DataLoader
+import kagglehub
+
 
 class Report:
     def __init__(self, epoch, loss, Accuracy, n_epochs, RESULT_DIR = "Result"):
@@ -147,9 +149,18 @@ def Menu():
 
             # Load the dataset
             if dataset_choice == "EPFL - Mitocondria Electron Microscopy":
-                train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset('Database\\EPFL')
+                if os.path.exists(p.PATH_EPFL) and os.path.isdir(p.PATH_EPFL):
+                    train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset(p.PATH_EPFL)
+                else:
+                    path = kagglehub.dataset_download("kmader/electron-microscopy-3d-segmentation", path = p.PATH_EPFL)
+                    print("Path to dataset files:", path)
+            
             elif dataset_choice == "Chest CT Segmentation":
-                train_ds, train_mask_ds, test_ds, test_mask_ds = set_jpg_Dataset('Database\\CT-Chest\\Marco Polo\\archive')
+                if os.path.exists(p.PATH_CT_MARCOPOLO) and os.path.isdir(p.PATH_CT_MARCOPOLO):
+                    train_ds, train_mask_ds, test_ds, test_mask_ds = set_jpg_Dataset(p.PATH_CT_MARCOPOLO)
+                else:
+                    path = kagglehub.dataset_download("polomarco/chest-ct-segmentation", path = p.PATH_CT_MARCOPOLO)
+                    print("Path to dataset files:", path)            
             else:
                 print("Invalid dataset choice.")
                 continue

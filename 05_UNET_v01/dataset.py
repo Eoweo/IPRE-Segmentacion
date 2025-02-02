@@ -45,12 +45,12 @@ def set_tif_dataset(abs_path):
     return test, test_mask, training, training_mask
 
 def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id = p.BLOCK_ID ):
-    csv_path = os.path.join(abs_path, 'train.csv')
+    csv_path = os.path.join(abs_path,"archive", 'train.csv')
     data = pd.read_csv(csv_path)
     data = data[:]
 
-    image_dir = os.path.join(abs_path,'images/', 'images/')
-    mask_dir =  os.path.join(abs_path,'masks/', 'masks/' ) 
+    image_dir = os.path.join(abs_path,"archive",'images/', 'images/')
+    mask_dir =  os.path.join(abs_path,"archive",'masks/', 'masks/' ) 
     images_dict = defaultdict(list)
     masks_dict = defaultdict(list)
 

@@ -23,5 +23,7 @@ MULTI_CLASS = False
 
 #RESULT
 RESULT_DIR = os.path.join("mnt", "workspace", "cmorenor", "RESULT")
-
+PATH_DATASET = os.path.join('mnt','researchers','marcelo-andia','datasets')
+PATH_CT_MARCOPOLO = os.path.join(PATH_DATASET,'CT-Chest', 'Marco Polo')
+PATH_EPFL = os.path.join(PATH_DATASET,'EPFL')
 
