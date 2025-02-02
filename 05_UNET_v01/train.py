@@ -1,4 +1,5 @@
 import time
+import psutil
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -84,11 +85,14 @@ def train_model(dl, model, device, n_epochs):
             remaining_steps = total_steps - pbar.n
             time_per_step = elapsed_time / pbar.n if pbar.n > 0 else 0
             estimated_time_left = time_per_step * remaining_steps
+            used_memory =  psutil.virtual_memory().used / (1024**3)
+            total_memory = psutil.virtual_memory().total / (1024**3)
 
             accuracy.append(CheckAccuracy(dl, model, device))
 
             # Set progress bar postfix with estimated time left
             pbar.set_postfix({
+                "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
                 "Epoch": f"{epoch + 1}/{n_epochs}",
                 "Last Batch Loss": f"{loss.item():.4f}",
                 "Accurasy": f"{accuracy[-1]:.4f}",

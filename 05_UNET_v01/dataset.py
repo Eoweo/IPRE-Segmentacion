@@ -1,4 +1,5 @@
 import os
+import psutil
 import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
@@ -47,7 +48,7 @@ def set_tif_dataset(abs_path):
 def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id = p.BLOCK_ID ):
     csv_path = os.path.join(abs_path,"archive", 'train.csv')
     data = pd.read_csv(csv_path)
-    data = data[:]
+    data = data[:5000]
 
     image_dir = os.path.join(abs_path,"archive",'images/', 'images/')
     mask_dir =  os.path.join(abs_path,"archive",'masks/', 'masks/' ) 
@@ -97,9 +98,12 @@ def set_jpg_Dataset(abs_path, rotation = True, target_size= (128, 128), block_id
             remaining_steps = len(data) - pbar.n
             time_per_step = elapsed_time / pbar.n if pbar.n > 0 else 0
             estimated_time_left = time_per_step * remaining_steps
+            used_memory =  psutil.virtual_memory().used / (1024**3)
+            total_memory = psutil.virtual_memory().total / (1024**3)
 
             # Set progress bar postfix with estimated time left
             pbar.set_postfix({
+                "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
                 "N_Img": f"{i}",
                 "Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
             })
