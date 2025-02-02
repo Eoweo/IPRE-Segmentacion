@@ -29,9 +29,11 @@ def compress_folder(folder_to_zip, output_folder="."):
     if not os.path.exists(folder_to_zip):
         print(f"Error: Folder '{folder_to_zip}' does not exist.")
         return
-    
+
+    parent_directory = os.path.dirname(folder_to_zip)
+
     # Generate unique zip file name
-    zip_name = get_next_zip_name(folder=output_folder)
+    zip_name = get_next_zip_name(folder=parent_directory)
     zip_path = os.path.join(output_folder, zip_name)
     
     # Compress the folder
