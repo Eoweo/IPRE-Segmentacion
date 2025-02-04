@@ -89,3 +89,4 @@ Database/
 05_UNET_v01/RESULT
 *.pth
 *.zip
+datasets/
