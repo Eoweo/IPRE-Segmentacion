@@ -3,9 +3,9 @@ import os
 
 TEST_SELECTED_INDEX = 1
 SAVE_PLOTS = True
-SAVE_MODEL = False
+SAVE_MODEL = True
 
-USE_PRETRAINED_MODEL = True  # Set to True to use a pre-trained model instead of training a new one
+USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
@@ -19,8 +19,12 @@ BLOCK_ID = ["ID00035637202182204917484",
             "ID00426637202313170790466",]
 
 #VARIABLE
+AUGMENTATION = True
+N_AUGMENTATION = 10
+SHIFTING = True
+FLIPPING = True
 ROTATION = True
-RESIZE = True
+RESIZE = False
 RESIZE_VALUE = (512,512)
 CHOP_VALUE = None
 EPOCHS = 30

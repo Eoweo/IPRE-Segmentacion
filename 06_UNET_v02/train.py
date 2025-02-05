@@ -14,6 +14,8 @@ def CheckAccuracy(loader, model, device):
 
     with torch.no_grad():
         for x, y in loader:
+            #cambiar por esta for i, (x, y) in enumerate(dl):
+            #y por ende cambiar la funcion de resultado
             x = x.to(device)
             y = y.to(device).squeeze(1)  # Remove channel dimension
 
@@ -48,7 +50,7 @@ def calculate_class_weights(mask):
     
     return torch.tensor([background_weight, foreground_weight])
 
-def train_model(dl, model, device, n_epochs):
+def train_model(dl, test_dl, model, device, n_epochs):
     # Optimization
     opt = Adam(model.parameters(), lr=3e-4)  # karpathy's constant
     criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy loss with logits
@@ -58,9 +60,11 @@ def train_model(dl, model, device, n_epochs):
     total_steps = n_epochs * len(dl)
 
     # Train model
-    losses = []
     epochs = []
     accuracy = []
+    losses = []
+    test_losses = []
+    test_accuracy = []
 
     with tqdm(total=total_steps, dynamic_ncols=True, leave=True) as pbar:
         for epoch in range(n_epochs):
@@ -77,10 +81,27 @@ def train_model(dl, model, device, n_epochs):
 
                 # Store training data
                 epochs.append(epoch + i / N)
-                losses.append(loss.item())
+                training_loss += loss.item()
 
                 # Update progress bar
                 pbar.update(1)
+            
+            losses.append(training_loss/ len(dl))
+
+            # Evaluate model on test set
+            model.eval()
+            test_loss = 0
+            with torch.no_grad():
+                for i, (x, y) in enumerate(dl):
+                    x, y = x.to(device), y.to(device).squeeze(1)
+                    test_outputs = model(x)
+                    test_loss += criterion(test_outputs, y).item()
+            
+            test_losses.append(test_loss/len(test_dl))
+
+            accuracy.append(CheckAccuracy(dl, model, device))
+            test_accuracy.append(CheckAccuracy(test_dl, model, device)) ###cehck accurassy testing data
+
 
             # Calculate time left
             elapsed_time = time.time() - start_time
@@ -89,8 +110,6 @@ def train_model(dl, model, device, n_epochs):
             estimated_time_left = time_per_step * remaining_steps
             used_memory =  psutil.virtual_memory().used / (1024**3)
             total_memory = psutil.virtual_memory().total / (1024**3)
-
-            accuracy.append(CheckAccuracy(dl, model, device))
 
             # Set progress bar postfix with estimated time left
             pbar.set_postfix({
@@ -104,4 +123,4 @@ def train_model(dl, model, device, n_epochs):
             model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
             torch.save(model.state_dict(), model_path)
 
-    return np.array(epochs), np.array(losses), accuracy
+    return np.array(epochs), np.array(losses), np.array(test_losses), accuracy, test_accuracy

@@ -1,17 +1,20 @@
 import os
 import gc
-import psutil
-import numpy as np
-from collections import defaultdict
-from tqdm import tqdm
-from PIL import Image
-import pandas as pd
+import cv2
+import time
 import torch
+import psutil
+import random
+import numpy as np
+import pandas as pd
+import parameter as p
+from PIL import Image
+from tqdm import tqdm
+from scipy import ndimage
+from multiprocessing import Pool
+from collections import defaultdict
 from torch.utils.data import Dataset
 from torchvision.transforms.functional import rotate
-import random
-import time
-import parameter as p
 
 def set_tif_dataset(abs_path):
 
@@ -48,7 +51,7 @@ def set_tif_dataset(abs_path):
 
 PATIENT_SPLITS = {"train": set(), "test": set()}
 
-def initialize_patient_splits(abs_path, test_ratio=0.5):
+def initialize_patient_splits(abs_path, test_ratio=0.8):
  
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
@@ -60,8 +63,8 @@ def initialize_patient_splits(abs_path, test_ratio=0.5):
     random.shuffle(patient_ids)
     split_index = int(len(patient_ids) * test_ratio)
     
-    PATIENT_SPLITS["test"] = set(patient_ids[:split_index])
-    PATIENT_SPLITS["train"] = set(patient_ids[split_index:])
+    PATIENT_SPLITS["test"] = set(patient_ids[split_index:])
+    PATIENT_SPLITS["train"] = set(patient_ids[:split_index])
 
     print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Test:", len(PATIENT_SPLITS["test"]))
 
@@ -74,6 +77,8 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, tar
     
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
+
+    data = data[:]
 
     image_dir = os.path.join(abs_path, "archive", "images", "images")
     mask_dir = os.path.join(abs_path, "archive", "masks", "masks")
@@ -106,39 +111,87 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, tar
             
             yield image, mask  # Instead of storing, yield one image at a time
 
+#https://github.com/kochlisGit/Data-Augmentation-Algorithms/blob/main/random_data_augmentations.py
+
+def random_horizontal_flip(image, mask, flip_prob):
+    if random.uniform(0, 1.0) < flip_prob:
+        return image[:, ::-1].copy(), mask[:, ::-1].copy()
+    return image, mask
+def random_crop(image, mask, scale):
+    height, width = image.shape[:2]
+    x_min = int(width * scale)
+    y_min = int(height * scale)
+    x = random.randint(0, width - x_min)
+    y = random.randint(0, height - y_min)
+    
+    cropped_image = image[y:y+y_min, x:x+x_min]
+    cropped_mask = mask[y:y+y_min, x:x+x_min]
+    return cv2.resize(cropped_image, (width, height)), cv2.resize(cropped_mask, (width, height))
+
+def random_padding(image, mask, padding_range):
+    padding_pixels = random.randint(0, padding_range)
+    padded_image = cv2.copyMakeBorder(image, padding_pixels, padding_pixels, padding_pixels, padding_pixels, cv2.BORDER_CONSTANT)
+    padded_mask = cv2.copyMakeBorder(mask, padding_pixels, padding_pixels, padding_pixels, padding_pixels, cv2.BORDER_CONSTANT)
+    return cv2.resize(padded_image, image.shape[:2][::-1]), cv2.resize(padded_mask, mask.shape[:2][::-1])
+
+def random_brightness(image, min_range, max_range):
+    brightness = random.randint(min_range, max_range)
+    v = image
+    if brightness >= 0:
+        lim = 255 - brightness
+        v[v > lim] = 255
+        v[v <= lim] += brightness
+    else:
+        brightness = abs(brightness)
+        lim = brightness
+        v[v < lim] = 0
+        v[v >= lim] -= brightness
+    return v
+
+def random_contrast(image, min_range=0.5, max_range=1.5):
+    contrast = random.uniform(min_range, max_range)
+    mean = np.mean(image)
+    image = np.clip((image - mean) * contrast + mean, 0, 255).astype(np.uint8)
+    return image
+
+def random_rotate(image, mask, min_angle, max_angle):
+    angle = random.randint(min_angle, max_angle)
+    rotated_image = ndimage.rotate(image, angle, reshape=False)
+    rotated_mask = ndimage.rotate(mask, angle, reshape=False)
+    return rotated_image, rotated_mask
+
+def apply_augmentations(image, mask, n=10, augmentation_prob=0.8):
+
+    for _ in range(n):
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image, mask = random_horizontal_flip(image, mask, flip_prob=0.5)
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image, mask = random_crop(image, mask, scale=0.9)
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image, mask = random_padding(image, mask, padding_range=50)
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image = random_brightness(image, -30, 30)
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image = random_contrast(image, 0.5, 3)
+        if random.uniform(0, 1.0) < augmentation_prob:
+            image, mask = random_rotate(image, mask, -70, 70)
+        return image, mask
+
+def augment_data(args):
+    img, mask = args
+    augmented_img, augmented_mask = apply_augmentations(img, mask)
+    return augmented_img, augmented_mask
+
 class MainDataset(Dataset):
-    def __init__(self, data, is_rotation):
-        """
-        Initialize the dataset with images and masks.
-        :param data: A generator yielding (image, mask) pairs.
-        :param is_rotation: If True, generates rotated images to augment the dataset.
-        """
+    def __init__(self, data, num_workers = 8, type = "test"):
         self.images = []
         self.masks = []
+        self.type = type
 
         # Process the original dataset from the generator
         for img, mask in data:
             self.images.append(img)
             self.masks.append(mask)
-
-            if is_rotation:
-                angle = random.uniform(0, 270)  # Random rotation angle
-
-                img_rotated = rotate(
-                    torch.tensor(img, dtype=torch.float32).unsqueeze(0),
-                    angle,
-                    interpolation=Image.BILINEAR,
-                    fill=0
-                ).squeeze(0).numpy()
-
-                mask_rotated = rotate(
-                    torch.tensor(mask, dtype=torch.float32).unsqueeze(0),
-                    angle,
-                    interpolation=Image.BILINEAR
-                ).squeeze(0).numpy()
-
-                self.images.append(img_rotated)
-                self.masks.append(mask_rotated)
 
         # Convert to NumPy arrays
         self.images = np.array(self.images, dtype=np.float32)
@@ -150,44 +203,12 @@ class MainDataset(Dataset):
     def __getitem__(self, idx):
         image = self.images[idx]
         mask = self.masks[idx]
+        if p.AUGMENTATION and self.type != "Training":
+            image, mask = apply_augmentations(image, mask, n=p.N_AUGMENTATION, augmentation_prob=0.8)
+
 
         # Convert to PyTorch tensors
         image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W) -> (C, H, W)
         mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
 
         return image, mask
-
-
-
-#class MainDataset(Dataset):
-#    def __init__(self, data, is_rotation):
-#        self.data  = data
-#        
-#        if is_rotation:
-#            rotated_images = []
-#            rotated_masks = []
-#
-#            for img, mask in data:
-#                angle = random.uniform(0, 270)
-#
-#                img_rotated = rotate(torch.tensor(img, dtype=torch.float32).unsqueeze(0), float(angle), interpolation=Image.BILINEAR, fill= 0)
-#                mask_rotated = rotate(torch.tensor(mask, dtype=torch.float32).unsqueeze(0), angle, interpolation=Image.BILINEAR)
-#
-#                rotated_images.append(img_rotated.squeeze(0).numpy())
-#                rotated_masks.append(mask_rotated.squeeze(0).numpy())
-#
-#            self.images = np.concatenate((self.images, np.array(rotated_images)), axis=0)
-#            self.masks = np.concatenate((self.masks, np.array(rotated_masks)), axis=0)
-#
-#    def __len__(self):
-#        return len(self.images)
-#
-#    def __getitem__(self, idx):
-#        image = self.images[idx]
-#        mask = self.masks[idx]
-#
-#        # Convert to PyTorch tensors
-#        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W, C) -> (C, H, W)
-#        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  # Add channel dimension
-#
-#        yield image, mask
