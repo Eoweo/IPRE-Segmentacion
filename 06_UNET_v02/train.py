@@ -70,7 +70,7 @@ def train_model(dl, test_dl, model, device, n_epochs):
         for epoch in range(n_epochs):
             model.train()
             N = len(dl)
-
+            training_loss = 0
             for i, (x, y) in enumerate(dl):
                 x, y = x.to(device), y.to(device).squeeze(1)#.long()  # Convert mask to [B, H, W] and integer type
                 opt.zero_grad()
@@ -85,7 +85,7 @@ def train_model(dl, test_dl, model, device, n_epochs):
 
                 # Update progress bar
                 pbar.update(1)
-            
+
             losses.append(training_loss/ len(dl))
 
             # Evaluate model on test set
@@ -115,12 +115,18 @@ def train_model(dl, test_dl, model, device, n_epochs):
             pbar.set_postfix({
                 "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
                 "Epoch": f"{epoch + 1}/{n_epochs}",
-                "Last Batch Loss": f"{loss.item():.4f}",
+                "Loss": f"{losses[-1]:.4f}",
+                "T_Loss": f"{test_losses[-1]:.4f}",                
                 "Accurasy": f"{accuracy[-1]:.4f}",
-                "Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
+                "T_Accurasy": f"{test_accuracy[-1]:.4f}",                
+                #"Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
             })
-        if p.SAVE_MODEL:
-            model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
-            torch.save(model.state_dict(), model_path)
+            if epoch > p.EPOCHS*0.05:
+                if abs(test_accuracy[-p.EPOCHS*0.05] - test_accuracy[-1]) > 0.01:
+                    print(f"\nStopping early: Test accuracy has not improved more than 1% in the last {p.EPOCHS*0.05} epochs.\n")
+
+            if epoch % (p.EPOCHS*0.2) == 0 and p.SAVE_MODEL:
+                model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
+                torch.save(model.state_dict(), model_path)
 
     return np.array(epochs), np.array(losses), np.array(test_losses), accuracy, test_accuracy

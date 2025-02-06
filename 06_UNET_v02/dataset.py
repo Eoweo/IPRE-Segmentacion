@@ -5,6 +5,7 @@ import time
 import torch
 import psutil
 import random
+import copy as c
 import numpy as np
 import pandas as pd
 import parameter as p
@@ -16,38 +17,72 @@ from collections import defaultdict
 from torch.utils.data import Dataset
 from torchvision.transforms.functional import rotate
 
-def set_tif_dataset(abs_path):
-
+def tif_dataset_generator(abs_path, mode="test"):
+ 
     training_file = os.path.join(abs_path, 'training.tif')
     training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
     testing_file = os.path.join(abs_path, 'testing.tif')
     testing_mask_file = os.path.join(abs_path, 'testing_groundtruth.tif')
 
     def process_tif(file_path):
-        images_list = []
         try:
             with Image.open(file_path) as img:
                 while True:
-                    img_gray = img.convert("L")
+                    image = img.convert("L")
                     if p.RESIZE:
-                        img_resized = img_gray.resize(p.RESIZE_VALUE)
-
-                    images_list.append(np.array(img_resized) / 255.0)
-
+                        image = image.resize(p.RESIZE_VALUE)
+                    
+                    yield np.array(image) / 255.0
+                    
                     img.seek(img.tell() + 1)
         except EOFError:
-            pass  
+            return  
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file_path}")
+    
+    if mode == "train":
+        img_gen = process_tif(training_file)
+        mask_gen = process_tif(training_mask_file)
+    elif mode == "test":
+        img_gen = process_tif(testing_file)
+        mask_gen = process_tif(testing_mask_file)
 
-        return np.stack(images_list) if images_list else None
+    for img, mask in zip(img_gen, mask_gen):
+        yield img, mask
 
-    training = process_tif(training_file)
-    training_mask = process_tif(training_mask_file)
-    test = process_tif(testing_file)
-    test_mask = process_tif(testing_mask_file)
 
-    return test, test_mask, training, training_mask
+#def set_tif_dataset(abs_path):
+#
+#    training_file = os.path.join(abs_path, 'training.tif')
+#    training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
+#    testing_file = os.path.join(abs_path, 'testing.tif')
+#    testing_mask_file = os.path.join(abs_path, 'testing_groundtruth.tif')
+#
+#    def process_tif(file_path):
+#        images_list = []
+#        try:
+#            with Image.open(file_path) as img:
+#                while True:
+#                    img_gray = img.convert("L")
+#                    if p.RESIZE:
+#                        img_resized = img_gray.resize(p.RESIZE_VALUE)
+#
+#                    images_list.append(np.array(img_resized) / 255.0)
+#
+#                    img.seek(img.tell() + 1)
+#        except EOFError:
+#            pass  
+#        except FileNotFoundError:
+#            raise FileNotFoundError(f"File not found: {file_path}")
+#
+#        return np.stack(images_list) if images_list else None
+#
+#    training = process_tif(training_file)
+#    training_mask = process_tif(training_mask_file)
+#    test = process_tif(testing_file)
+#    test_mask = process_tif(testing_mask_file)
+#
+#    return test, test_mask, training, training_mask
 
 PATIENT_SPLITS = {"train": set(), "test": set()}
 
@@ -69,12 +104,8 @@ def initialize_patient_splits(abs_path, test_ratio=0.8):
     print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Test:", len(PATIENT_SPLITS["test"]))
 
 
-def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, target_size=(128, 128), block_id=set()):
-    """
-    Generator function to load images and masks one by one, saving memory.
-    """
-    assert dataset_type in ["train", "test"], "dataset_type must be 'train' or 'test'"
-    
+def load_jpg_dataset_generator(abs_path, dataset_type="test", target_size=(128, 128), block_id=set()):
+     
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
 
@@ -84,6 +115,7 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, tar
     mask_dir = os.path.join(abs_path, "archive", "masks", "masks")
 
     with tqdm(total=len(data), desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, leave=True) as pbar:
+        i = 0
         for _, row in data.iterrows():
             image_name = row["ImageId"]
             mask_name = row["MaskId"]
@@ -93,11 +125,12 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, tar
             if patient_id in block_id or patient_id not in PATIENT_SPLITS[dataset_type]:
                 pbar.update(1)
                 continue
+            i += 1
 
             image = Image.open(os.path.join(image_dir, image_name)).convert("L")
             mask = Image.open(os.path.join(mask_dir, mask_name)).convert("RGB")
 
-            if target_size:
+            if p.RESIZE:
                 image = np.array(image.resize(target_size), dtype=np.float32) / 255.0
                 mask = np.array(mask.resize(target_size), dtype=np.float32) / 255.0
             else:
@@ -108,6 +141,13 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", rotation=True, tar
             mask = (mask[:, :, 2] > threshold) * mask[:, :, 2]
 
             pbar.update(1)
+            used_memory =  psutil.virtual_memory().used / (1024**3)
+            total_memory = psutil.virtual_memory().total / (1024**3)
+
+            # Set progress bar postfix with estimated time left
+            pbar.set_postfix({
+                "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
+                "N_Img": f"{i}"})
             
             yield image, mask  # Instead of storing, yield one image at a time
 
@@ -135,11 +175,11 @@ def random_padding(image, mask, padding_range):
     return cv2.resize(padded_image, image.shape[:2][::-1]), cv2.resize(padded_mask, mask.shape[:2][::-1])
 
 def random_brightness(image, min_range, max_range):
-    brightness = random.randint(min_range, max_range)
+    brightness = random.uniform(min_range, max_range)
     v = image
     if brightness >= 0:
-        lim = 255 - brightness
-        v[v > lim] = 255
+        lim = (1 - brightness)
+        v[v > lim] = 1
         v[v <= lim] += brightness
     else:
         brightness = abs(brightness)
@@ -148,10 +188,15 @@ def random_brightness(image, min_range, max_range):
         v[v >= lim] -= brightness
     return v
 
-def random_contrast(image, min_range=0.5, max_range=1.5):
+def random_contrast(image, min_range=0.1, max_range=2.5):
     contrast = random.uniform(min_range, max_range)
     mean = np.mean(image)
-    image = np.clip((image - mean) * contrast + mean, 0, 255).astype(np.uint8)
+    #print(f"Formula: (image - {mean}) * {contrast} + {mean}")
+    #print(f"Before Clipping: Min = {image.min()}, Max = {image.max()}")
+
+    image = np.clip((image - mean) * contrast + mean, 0, 1)
+    #print(f"After Clipping: Min = {image.min()}, Max = {image.max()}")
+
     return image
 
 def random_rotate(image, mask, min_angle, max_angle):
@@ -160,7 +205,10 @@ def random_rotate(image, mask, min_angle, max_angle):
     rotated_mask = ndimage.rotate(mask, angle, reshape=False)
     return rotated_image, rotated_mask
 
-def apply_augmentations(image, mask, n=10, augmentation_prob=0.8):
+def apply_augmentations(image, mask, n=1, augmentation_prob=0.8):
+    image = c.deepcopy(image)
+    mask = c.deepcopy(mask)
+    list = []
 
     for _ in range(n):
         if random.uniform(0, 1.0) < augmentation_prob:
@@ -168,34 +216,53 @@ def apply_augmentations(image, mask, n=10, augmentation_prob=0.8):
         if random.uniform(0, 1.0) < augmentation_prob:
             image, mask = random_crop(image, mask, scale=0.9)
         if random.uniform(0, 1.0) < augmentation_prob:
-            image, mask = random_padding(image, mask, padding_range=50)
+            image, mask = random_padding(image, mask, padding_range=max(int(round(p.RESIZE_VALUE[0]*0.025, 0)), 1))
         if random.uniform(0, 1.0) < augmentation_prob:
-            image = random_brightness(image, -30, 30)
+            image = random_brightness(image, -0.1, 0.3/p.N_AUGMENTATION) #-.5 - 0.5max
         if random.uniform(0, 1.0) < augmentation_prob:
-            image = random_contrast(image, 0.5, 3)
+           image = random_contrast(image, 0.7, 2/(p.N_AUGMENTATION)) #0.1 - 2.5max
         if random.uniform(0, 1.0) < augmentation_prob:
-            image, mask = random_rotate(image, mask, -70, 70)
-        return image, mask
+            image, mask = random_rotate(image, mask, -10, 10)
+    return image, mask
 
-def augment_data(args):
-    img, mask = args
-    augmented_img, augmented_mask = apply_augmentations(img, mask)
-    return augmented_img, augmented_mask
+
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
+# Define the Albumentations augmentation pipeline
+def get_augmentation_pipeline():
+    return A.Compose([
+        # Geometric transformations (applied to both image and mask)
+        A.HorizontalFlip(p=0.5),
+        A.RandomCrop(height=512, width=512, p=0.8),
+        A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, value=0, p=0.8),
+        A.Rotate(limit=10, p=0.8),
+
+        # Image-only transformations
+        A.OneOf([
+            A.RandomBrightnessContrast(brightness_limit=(-0.1, 0.3), contrast_limit=(0.7, 2.0), p=1.0),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
+        ], p=0.8),
+
+        # Resize back to ensure consistent output size
+        A.Resize(p.RESIZE_VALUE),
+
+        # Convert to PyTorch tensors
+        ToTensorV2()
+    ])
 
 class MainDataset(Dataset):
-    def __init__(self, data, num_workers = 8, type = "test"):
+    def __init__(self, data, augmentation=True, dataset_type="test"):
         self.images = []
         self.masks = []
-        self.type = type
+        self.dataset_type = dataset_type
+        self.augmentation = augmentation
+        self.transform = get_augmentation_pipeline() if augmentation else None
 
-        # Process the original dataset from the generator
+        # Load dataset into memory
         for img, mask in data:
             self.images.append(img)
             self.masks.append(mask)
-
-        # Convert to NumPy arrays
-        self.images = np.array(self.images, dtype=np.float32)
-        self.masks = np.array(self.masks, dtype=np.float32)
 
     def __len__(self):
         return len(self.images)
@@ -203,12 +270,48 @@ class MainDataset(Dataset):
     def __getitem__(self, idx):
         image = self.images[idx]
         mask = self.masks[idx]
-        if p.AUGMENTATION and self.type != "Training":
-            image, mask = apply_augmentations(image, mask, n=p.N_AUGMENTATION, augmentation_prob=0.8)
 
-
-        # Convert to PyTorch tensors
-        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W) -> (C, H, W)
-        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
+        # Apply augmentations if enabled
+        if self.augmentation and self.dataset_type == "Training":
+            augmented = self.transform(image=image, mask=mask)
+            image = augmented["image"]
+            mask = augmented["mask"]
+        else:
+            # Convert to tensor if no augmentation
+            image = ToTensorV2()(image=image)["image"]
+            mask = ToTensorV2()(mask=mask)["image"]
 
         return image, mask
+
+#class MainDataset(Dataset):
+#    def __init__(self, data, augmentation, type = "test"):
+#        self.images = []
+#        self.masks = []
+#        self.type = type
+#        self.augmentation = augmentation
+#
+#        # Process the original dataset from the generator
+#        for img, mask in data:
+#            self.images.append(img)
+#            self.masks.append(mask)
+#
+#        # Convert to NumPy arrays
+#        self.images = self.images #np.array(self.images, dtype=np.float32)
+#        self.masks =  self.masks  #np.array(self.masks , dtype=np.float32)
+#
+#    def __len__(self):
+#        return len(self.images)
+#
+#    def __getitem__(self, idx):
+#        image, mask = c.deepcopy(self.images[idx]), c.deepcopy(self.masks[idx])
+#        #print(f"beforeimage:{idx} - shape: {image.shape}  - max{np.max(image)} - min: {np.min(image)} ")
+#
+#        if self.augmentation and self.type == "Training":
+#            list = []
+#            image, mask, list = apply_augmentations(image, mask, n=p.N_AUGMENTATION, augmentation_prob=0.8)
+#            #print(f"image:{idx} - shape: {image.shape} max{np.max(image)} - min: {np.min(image)} - {list}")
+#        # Convert to PyTorch tensors
+#        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W) -> (C, H, W)
+#        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
+#
+#        return image, mask

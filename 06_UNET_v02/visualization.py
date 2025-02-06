@@ -4,7 +4,7 @@ import psutil
 import matplotlib.pyplot as plt
 import torch
 import parameter as p
-from dataset import set_tif_dataset, MainDataset, initialize_patient_splits, load_jpg_dataset_generator
+from dataset import tif_dataset_generator  , MainDataset, initialize_patient_splits, load_jpg_dataset_generator
 from train import train_model, CheckAccuracy
 from model import UNet
 from torch.utils.data import DataLoader
@@ -13,7 +13,7 @@ import kagglehub
 
 class Report:
     def __init__(self, epoch, loss, test_losses, Accuracy, test_accuracy, n_epochs, RESULT_DIR = "Result"):
-        self.epoch = [i for i in range(epoch)]
+        self.epoch = [i for i in range(n_epochs)]
         self.loss = loss
         self.type = ["Training", "Test"]
         self.result_dir = RESULT_DIR
@@ -22,30 +22,28 @@ class Report:
                          torch.tensor(test_accuracy, dtype=torch.float32).reshape(-1)]
         self.loss_data_avgd = [torch.tensor(loss, dtype=torch.float32).reshape(-1),
                                torch.tensor(test_losses, dtype=torch.float32).reshape(-1)]
-        
-        self.epoch_data_avgd = self.epoch.reshape(self.n_epochs,-1).mean(axis=1)
 
     def plot(self):
         for i in range(2):
             fig, axes = plt.subplots(1, 2, figsize=(10, 4))
 
             # Plot Loss
-            axes[0].plot(self.epoch, self.loss_data_avgd, 'o--', label='Loss', color="cyan")
+            axes[0].plot(self.epoch, self.loss_data_avgd[i], 'o--', label='Loss', color="cyan")
             axes[0].set_xlabel('Epoch Number')
             axes[0].set_ylabel('Cross Entropy')
-            axes[0].set_title(f'Cross Entropy (avgd per epoch) - {self.type}')
+            axes[0].set_title(f'Cross Entropy (avgd per epoch) - {self.type[i]}')
             axes[0].legend()
 
             # Plot Accuracy
-            axes[1].plot(self.epoch, self.Accuracy, 'd--', label='Accuracy', color='orange')
+            axes[1].plot(self.epoch, self.Accuracy[i], 'd--', label='Accuracy', color='orange')
             axes[1].set_xlabel('Epoch Number')
             axes[1].set_ylabel('Accuracy (%)')
             axes[1].set_xlim(0, self.n_epochs)
-            axes[1].set_title(f'Accuracy Over Epochs - {self.type}')
+            axes[1].set_title(f'Accuracy Over Epochs - {self.type[i]}')
             axes[1].legend()
 
             plt.tight_layout()
-            save_path = os.path.join(self.result_dir, f'{self.type}_Report.png')
+            save_path = os.path.join(self.result_dir, f'{self.type[i]}_Report.png')
             plt.savefig(save_path)
             print(f"Saved plot to {save_path}")
             plt.close()  # Close the plot to avoid memory issues
@@ -103,23 +101,25 @@ def Menu():
     dataset_choice = p.TEST_AVAILABLE[p.TEST_SELECTED_INDEX]  # Use predefined index
     
     if dataset_choice == "EPFL - Mitocondria Electron Microscopy":
-        train_ds, train_mask_ds, test_ds, test_mask_ds = set_tif_dataset(p.PATH_EPFL)
+        test_generator = tif_dataset_generator(p.PATH_EPFL, "test")
+        train_generator = tif_dataset_generator(p.PATH_EPFL, "train")
+
     elif dataset_choice == "Chest CT Segmentation":
         print("set dataset")
         initialize_patient_splits(p.PATH_CT_MARCOPOLO)
-        test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, dataset_type="test", block_id=p.BLOCK_ID)
-        train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, dataset_type="train", block_id=p.BLOCK_ID)
+        test_generator =  load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, dataset_type="test" , target_size = p.RESIZE_VALUE, block_id=p.BLOCK_ID)
+        train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, dataset_type="train", target_size = p.RESIZE_VALUE, block_id=p.BLOCK_ID)
     
     # Prepare datasets and dataloaders
     print("set MainDataset")
     if p.RE_TRAIN_MODEL or not p.USE_PRETRAINED_MODEL:
-        train_dataset = MainDataset(train_generator, p.ROTATION, type="Training")
-    test_dataset = MainDataset(test_generator, False)
+        train_dataset = MainDataset(train_generator, p.AUGMENTATION, type="Training")
+    test_dataset = MainDataset(test_generator, p.AUGMENTATION, type="Test")
     
     print("Set Dataloader")
     if p.RE_TRAIN_MODEL or not p.USE_PRETRAINED_MODEL:
-        train_dl = DataLoader(train_dataset, batch_size=p.BATCH_SIZE, shuffle=p.SHUFFLE, pin_memory=True)
-    test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True, )
+        train_dl = DataLoader(train_dataset, batch_size=p.BATCH_SIZE, shuffle=p.SHUFFLE, pin_memory=True, num_workers=2)
+    test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=2 )
     
     used_memory =  psutil.virtual_memory().used / (1024**3)
     total_memory = psutil.virtual_memory().total / (1024**3)
@@ -149,22 +149,23 @@ def Menu():
             print(f"Test accuracy obtained: {accuracy:.4f}")
 
             if p.SAVE_PLOTS:
+                print("-------------- Saving plots --------------")
                 plot_predictions_interactive(model, test_dl, device=device, RESULT_DIR=p.RESULT_DIR)
     
     if p.RE_TRAIN_MODEL or not p.USE_PRETRAINED_MODEL:
         # Train the model
         initialize_patient_splits(p.PATH_CT_MARCOPOLO)
-        epoch_data, loss_data, accuracy_data, accuracy_test = train_model(train_dl, test_dl, model, device, n_epochs=p.EPOCHS)
+        epoch_data, loss_data, loss_test, accuracy_data, accuracy_test = train_model(train_dl, test_dl, model, device, n_epochs=p.EPOCHS)
         accuracy = CheckAccuracy(test_dl, model, device)
     
         # Save model if enabled
         if p.SAVE_MODEL:
             model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
             torch.save(model.state_dict(), model_path)
-    
+        
         # Save and visualize results if enabled
         if p.SAVE_PLOTS:
-            analysis = Report(epoch_data, loss_data, accuracy_data, accuracy_test, p.EPOCHS, RESULT_DIR=p.RESULT_DIR)
+            analysis = Report(epoch_data, loss_data, loss_test, accuracy_data, accuracy_test, p.EPOCHS, RESULT_DIR=p.RESULT_DIR)
             analysis.plot()
             plot_predictions_interactive(model, test_dl, device=device, RESULT_DIR=p.RESULT_DIR)
     
