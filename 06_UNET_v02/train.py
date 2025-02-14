@@ -80,12 +80,12 @@ def train_model(dl, test_dl, model, device, n_epochs):
                 opt.step()
 
                 # Store training data
-                epochs.append(epoch + i / N)
                 training_loss += loss.item()
 
                 # Update progress bar
                 pbar.update(1)
 
+            epochs.append(epoch)
             losses.append(training_loss/ len(dl))
 
             # Evaluate model on test set
@@ -119,12 +119,15 @@ def train_model(dl, test_dl, model, device, n_epochs):
                 "T_Loss": f"{test_losses[-1]:.4f}",                
                 "Accurasy": f"{accuracy[-1]:.4f}",
                 "T_Accurasy": f"{test_accuracy[-1]:.4f}",                
-                #"Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
+                "Estimated Time Left": f"{int(estimated_time_left // 60)}m {int(estimated_time_left % 60)}s"
             })
             if epoch > p.EPOCHS*0.05:
-                if abs(test_accuracy[-p.EPOCHS*0.05] - test_accuracy[-1]) > 0.01:
+                if abs(test_accuracy[int(round(-p.EPOCHS*0.05,0))] - test_accuracy[-1]) < 0.01:
                     print(f"\nStopping early: Test accuracy has not improved more than 1% in the last {p.EPOCHS*0.05} epochs.\n")
-
+                    print(f"{test_accuracy[int(round(-p.EPOCHS*0.05,0))]} - {test_accuracy[-1]}) = {test_accuracy[int(round(-p.EPOCHS*0.05,0))] - test_accuracy[-1]} > 0.01 ")
+                    model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
+                    torch.save(model.state_dict(), model_path)
+                    break  
             if epoch % (p.EPOCHS*0.2) == 0 and p.SAVE_MODEL:
                 model_path = os.path.join(p.RESULT_DIR, 'modelo_UNET_1.pth')
                 torch.save(model.state_dict(), model_path)

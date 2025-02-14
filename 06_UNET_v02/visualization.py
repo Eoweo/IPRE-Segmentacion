@@ -13,7 +13,7 @@ import kagglehub
 
 class Report:
     def __init__(self, epoch, loss, test_losses, Accuracy, test_accuracy, n_epochs, RESULT_DIR = "Result"):
-        self.epoch = [i for i in range(n_epochs)]
+        self.epoch = epoch
         self.loss = loss
         self.type = ["Training", "Test"]
         self.result_dir = RESULT_DIR
@@ -113,13 +113,13 @@ def Menu():
     # Prepare datasets and dataloaders
     print("set MainDataset")
     if p.RE_TRAIN_MODEL or not p.USE_PRETRAINED_MODEL:
-        train_dataset = MainDataset(train_generator, p.AUGMENTATION, type="Training")
-    test_dataset = MainDataset(test_generator, p.AUGMENTATION, type="Test")
+        train_dataset = MainDataset(train_generator, p.AUGMENTATION, "Training")
+    test_dataset = MainDataset(test_generator, p.AUGMENTATION, "Test")
     
     print("Set Dataloader")
     if p.RE_TRAIN_MODEL or not p.USE_PRETRAINED_MODEL:
-        train_dl = DataLoader(train_dataset, batch_size=p.BATCH_SIZE, shuffle=p.SHUFFLE, pin_memory=True, num_workers=2)
-    test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=2 )
+        train_dl = DataLoader(train_dataset, batch_size=p.BATCH_SIZE, shuffle=p.SHUFFLE, pin_memory=True, num_workers=4)
+    test_dl = DataLoader(test_dataset, batch_size=p.BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
     
     used_memory =  psutil.virtual_memory().used / (1024**3)
     total_memory = psutil.virtual_memory().total / (1024**3)
@@ -167,7 +167,7 @@ def Menu():
         if p.SAVE_PLOTS:
             analysis = Report(epoch_data, loss_data, loss_test, accuracy_data, accuracy_test, p.EPOCHS, RESULT_DIR=p.RESULT_DIR)
             analysis.plot()
-            plot_predictions_interactive(model, test_dl, device=device, RESULT_DIR=p.RESULT_DIR)
+            plot_predictions_interactive(model, train_dl, device=device, RESULT_DIR=p.RESULT_DIR)
     
         print(f"Test accuracy obtained: {accuracy:.4f}")
 

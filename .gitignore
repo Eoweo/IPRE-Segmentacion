@@ -90,3 +90,7 @@ Database/
 *.pth
 *.zip
 datasets/
+*wandb
+**/wandb/
+.wandb/
+wandb/

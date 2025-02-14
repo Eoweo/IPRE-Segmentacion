@@ -1,0 +1,8 @@
+
+squeue
+nvidia-smi
+ps aux | grep 2772201
+watch -n 1 nvidia-smi
+
+
+

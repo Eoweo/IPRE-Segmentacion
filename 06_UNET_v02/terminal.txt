@@ -1,0 +1,10 @@
+
+squeue
+nvidia-smi
+ps aux | grep 2772201
+watch -n 1 nvidia-smi
+
+salloc -p interactive -q interactive -t 5:00 --mem 4G --gpus 1 --cpus-per-task 2
+
+
+

@@ -12,9 +12,11 @@ import parameter as p
 from PIL import Image
 from tqdm import tqdm
 from scipy import ndimage
+import albumentations as A
 from multiprocessing import Pool
 from collections import defaultdict
 from torch.utils.data import Dataset
+from albumentations.pytorch import ToTensorV2
 from torchvision.transforms.functional import rotate
 
 def tif_dataset_generator(abs_path, mode="test"):
@@ -51,42 +53,10 @@ def tif_dataset_generator(abs_path, mode="test"):
         yield img, mask
 
 
-#def set_tif_dataset(abs_path):
-#
-#    training_file = os.path.join(abs_path, 'training.tif')
-#    training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
-#    testing_file = os.path.join(abs_path, 'testing.tif')
-#    testing_mask_file = os.path.join(abs_path, 'testing_groundtruth.tif')
-#
-#    def process_tif(file_path):
-#        images_list = []
-#        try:
-#            with Image.open(file_path) as img:
-#                while True:
-#                    img_gray = img.convert("L")
-#                    if p.RESIZE:
-#                        img_resized = img_gray.resize(p.RESIZE_VALUE)
-#
-#                    images_list.append(np.array(img_resized) / 255.0)
-#
-#                    img.seek(img.tell() + 1)
-#        except EOFError:
-#            pass  
-#        except FileNotFoundError:
-#            raise FileNotFoundError(f"File not found: {file_path}")
-#
-#        return np.stack(images_list) if images_list else None
-#
-#    training = process_tif(training_file)
-#    training_mask = process_tif(training_mask_file)
-#    test = process_tif(testing_file)
-#    test_mask = process_tif(testing_mask_file)
-#
-#    return test, test_mask, training, training_mask
 
 PATIENT_SPLITS = {"train": set(), "test": set()}
 
-def initialize_patient_splits(abs_path, test_ratio=0.8):
+def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
  
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
@@ -109,7 +79,7 @@ def load_jpg_dataset_generator(abs_path, dataset_type="test", target_size=(128, 
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
 
-    data = data[:]
+    data = data[:p.CHOP_VALUE]
 
     image_dir = os.path.join(abs_path, "archive", "images", "images")
     mask_dir = os.path.join(abs_path, "archive", "masks", "masks")
@@ -226,8 +196,6 @@ def apply_augmentations(image, mask, n=1, augmentation_prob=0.8):
     return image, mask
 
 
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
 
 # Define the Albumentations augmentation pipeline
 def get_augmentation_pipeline():
@@ -235,7 +203,7 @@ def get_augmentation_pipeline():
         # Geometric transformations (applied to both image and mask)
         A.HorizontalFlip(p=0.5),
         A.RandomCrop(height=512, width=512, p=0.8),
-        A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, value=0, p=0.8),
+        A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, p=0.8),
         A.Rotate(limit=10, p=0.8),
 
         # Image-only transformations
@@ -245,7 +213,7 @@ def get_augmentation_pipeline():
         ], p=0.8),
 
         # Resize back to ensure consistent output size
-        A.Resize(p.RESIZE_VALUE),
+        A.Resize(p.RESIZE_VALUE[0], p.RESIZE_VALUE[1] ),
 
         # Convert to PyTorch tensors
         ToTensorV2()
@@ -278,40 +246,72 @@ class MainDataset(Dataset):
             mask = augmented["mask"]
         else:
             # Convert to tensor if no augmentation
-            image = ToTensorV2()(image=image)["image"]
-            mask = ToTensorV2()(mask=mask)["image"]
+            image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
+            mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
 
         return image, mask
 
-#class MainDataset(Dataset):
-#    def __init__(self, data, augmentation, type = "test"):
-#        self.images = []
-#        self.masks = []
-#        self.type = type
-#        self.augmentation = augmentation
+#def set_tif_dataset(abs_path):
 #
-#        # Process the original dataset from the generator
-#        for img, mask in data:
-#            self.images.append(img)
-#            self.masks.append(mask)
+#    training_file = os.path.join(abs_path, 'training.tif')
+#    training_mask_file = os.path.join(abs_path, 'training_groundtruth.tif')
+#    testing_file = os.path.join(abs_path, 'testing.tif')
+#    testing_mask_file = os.path.join(abs_path, 'testing_groundtruth.tif')
 #
-#        # Convert to NumPy arrays
-#        self.images = self.images #np.array(self.images, dtype=np.float32)
-#        self.masks =  self.masks  #np.array(self.masks , dtype=np.float32)
+#    def process_tif(file_path):
+#        images_list = []
+#        try:
+#            with Image.open(file_path) as img:
+#                while True:
+#                    img_gray = img.convert("L")
+#                    if p.RESIZE:
+#                        img_resized = img_gray.resize(p.RESIZE_VALUE)
 #
-#    def __len__(self):
-#        return len(self.images)
+#                    images_list.append(np.array(img_resized) / 255.0)
 #
-#    def __getitem__(self, idx):
-#        image, mask = c.deepcopy(self.images[idx]), c.deepcopy(self.masks[idx])
-#        #print(f"beforeimage:{idx} - shape: {image.shape}  - max{np.max(image)} - min: {np.min(image)} ")
+#                    img.seek(img.tell() + 1)
+#        except EOFError:
+#            pass  
+#        except FileNotFoundError:
+#            raise FileNotFoundError(f"File not found: {file_path}")
 #
-#        if self.augmentation and self.type == "Training":
-#            list = []
-#            image, mask, list = apply_augmentations(image, mask, n=p.N_AUGMENTATION, augmentation_prob=0.8)
-#            #print(f"image:{idx} - shape: {image.shape} max{np.max(image)} - min: {np.min(image)} - {list}")
-#        # Convert to PyTorch tensors
-#        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W) -> (C, H, W)
-#        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
+#        return np.stack(images_list) if images_list else None
 #
-#        return image, mask
+#    training = process_tif(training_file)
+#    training_mask = process_tif(training_mask_file)
+#    test = process_tif(testing_file)
+#    test_mask = process_tif(testing_mask_file)
+#
+#    return test, test_mask, training, training_mask
+class MainDataseta(Dataset):
+    def __init__(self, data, augmentation, type = "test"):
+        self.images = []
+        self.masks = []
+        self.type = type
+        self.augmentation = augmentation
+
+        # Process the original dataset from the generator
+        for img, mask in data:
+            self.images.append(img)
+            self.masks.append(mask)
+
+        # Convert to NumPy arrays
+        self.images = self.images #np.array(self.images, dtype=np.float32)
+        self.masks =  self.masks  #np.array(self.masks , dtype=np.float32)
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image, mask = c.deepcopy(self.images[idx]), c.deepcopy(self.masks[idx])
+        #print(f"beforeimage:{idx} - shape: {image.shape}  - max{np.max(image)} - min: {np.min(image)} ")
+
+        if self.augmentation and self.type == "Training":
+            list = []
+            image, mask = apply_augmentations(image, mask, n=p.N_AUGMENTATION, augmentation_prob=0.8)
+            #print(f"image:{idx} - shape: {image.shape} max{np.max(image)} - min: {np.min(image)} - {list}")
+        # Convert to PyTorch tensors
+        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)  # (H, W) -> (C, H, W)
+        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)  
+
+        return image, mask

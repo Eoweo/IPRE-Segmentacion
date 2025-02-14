@@ -7,24 +7,82 @@ import GPUtil
 import psutil
 import shutil
 import zipfile
+import subprocess
 import parameter as p
 from model import UNet
 from train import train_model
 from visualization import Menu
 from torch.utils.data import DataLoader
 
+
+#def get_assigned_gpu():
+#    """Detects which GPU the SLURM job is using."""
+#    job_id = os.getenv("SLURM_JOB_ID")
+#    if not job_id:
+#        return None  # No SLURM job detected
+#
+#    try:
+#        result = subprocess.run(
+#            ["scontrol", "show", "job", job_id],
+#            capture_output=True, text=True, check=True
+#        )
+#        for line in result.stdout.split("\n"):
+#            if "GRES=gpu:" in line:
+#                parts = line.split("GRES=gpu:")[-1]
+#                gpu_ids = parts.split("(")[-1].split(")")[0]
+#                return int(gpu_ids) if gpu_ids.isdigit() else None
+#    except Exception:
+#        return None
+#
+#def system_monitor(interval=2):
+#    gpu_id = get_assigned_gpu()
+#    
+#    while True:
+#        used_ram = psutil.virtual_memory().used / (1024**3)
+#        total_ram = psutil.virtual_memory().total / (1024**3)
+#
+#        gpus = GPUtil.getGPUs()
+#
+#        gpu = gpus[gpu_id]
+#        gpu_usage = f"GPU {gpus.uuid}: {gpu.memoryUsed:.0f}/{gpu.memoryTotal:.0f} MB - {GPUtil.getGPUs()[0].load * 100:.2f}%"
+#
+#        print(f"CPU: {psutil.cpu_percent()}% | RAM: {used_ram:.2f}/{total_ram:.2f} GB | {gpu_usage}")
+#        time.sleep(interval)
+
+  # Change this to 1 if only monitoring one GPU
+
+def get_gpu_memory():
+    command = ["nvidia-smi", "--query-gpu=index,pci.bus_id,serial,memory.used,memory.total,utilization.gpu", "--format=csv,noheader,nounits"]
+    result = subprocess.run(command, capture_output=True, text=True)
+    
+    lines = result.stdout.strip().split("\n")  # Limit to NUM_GPUS
+    print(lines)
+    print([line.split(", ") for line in lines])
+    return [f"GPU {idx}: {bus_id} | Serial: {serial} | {used}/{total} MB | {util}%"
+        for idx, bus_id, serial, used, total, util in [line.split(", ") for line in lines]]
+
+def monitor_gpu(interval=2):
+    """Print GPU memory usage for the selected number of GPUs."""
+    while True:
+        gpu_stats = get_gpu_memory()
+        print(f"\nTime: {time.strftime('%H:%M:%S')}")
+        print("\n".join(get_gpu_memory()))
+        time.sleep(interval)
+
 def system_monitor(interval=2):
     while True:
         used_memory =  psutil.virtual_memory().used / (1024**3)
         total_memory = psutil.virtual_memory().total / (1024**3)
-        print(f"\nCPU: {psutil.cpu_percent()}% | RAM: {used_memory:.2f} / {total_memory:.2f} GB | " +
-              (f"GPU: {GPUtil.getGPUs()[0].load * 100:.2f}%" ))
+
+        print(f"\nCPU: {psutil.cpu_percent()}% | RAM: {used_memory:.2f} / {total_memory:.2f} GB | " )
+        print(f"gputil serial: {GPUtil.getGPUs()}") #(gpu.serial for gpu in GPUtil.getGPUs() )if len(GPUtil.getGPUs())>1 else 
+        print("\n".join(get_gpu_memory()))
         time.sleep(interval)
 
 if __name__ == "__main__":
     
     threading.Thread(target=system_monitor, args=(2,), daemon=True).start()
-
+    #threading.Thread(target=monitor_gpu, args=(2,), daemon=True).start()
 
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     if p.SAVE_MODEL or p.SAVE_PLOTS:
