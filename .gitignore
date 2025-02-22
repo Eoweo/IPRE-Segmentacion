@@ -88,6 +88,7 @@ private/
 Database/
 05_UNET_v01/RESULT
 *.pth
+*.ckpt
 *.zip
 datasets/
 *wandb

@@ -5,7 +5,7 @@ TEST_SELECTED_INDEX = 1
 SAVE_PLOTS = True
 SAVE_MODEL = True
 
-USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
+USE_PRETRAINED_MODEL = True  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
@@ -22,10 +22,10 @@ BLOCK_ID = ["ID00035637202182204917484",
 AUGMENTATION = True
 N_AUGMENTATION = 3
 RESIZE = False
-RESIZE_VALUE = (512,512)
+RESIZE_VALUE = (256,256)
 RATIO = 0.5
 CHOP_VALUE = 1000
-EPOCHS = 200
+EPOCHS = 10
 BATCH_SIZE = 30
 LEARNING_RATE = 3e-4
 SHUFFLE = True  

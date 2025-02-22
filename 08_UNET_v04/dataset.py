@@ -42,8 +42,8 @@ def load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", ta
      
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
-
-    data = data[:p.CHOP_VALUE]
+    if p.CHOP:
+        data = data[:p.CHOP_VALUE]
 
     image_dir = os.path.join(abs_path, "archive", "images", "images")
     mask_dir = os.path.join(abs_path, "archive", "masks", "masks")
@@ -89,7 +89,9 @@ def get_augmentation_pipeline():
     return A.Compose([
 
         A.HorizontalFlip(p=0.5),
-        A.RandomCrop(height=512, width=512, p=0.8),
+
+        A.RandomCrop(p.RESIZE_VALUE[0],p.RESIZE_VALUE[1], p=0.8) if p.RESIZE 
+                else A.RandomCrop(height=512, width=512, p=0.8), 
         A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, p=0.8),
         A.Rotate(limit=10, p=0.8),
 
