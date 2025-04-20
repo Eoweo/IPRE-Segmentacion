@@ -6,5 +6,4 @@ watch -n 1 nvidia-smi
 du -lh 
 quota-pretty
 conda clean --all
-
-
+du -sh *                     #### Check all dir sizes in a folder
