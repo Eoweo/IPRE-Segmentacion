@@ -136,10 +136,10 @@ class LungSegmentationDataModule(L.LightningDataModule):
         self.val_dataset = MainDataset(test_generator, augmentation=False, dataset_type="Test")
     
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=10)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=p.WORKERS)
     
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=10)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS)
 
 torch.set_float32_matmul_precision('high')
 
@@ -159,11 +159,11 @@ if __name__ == "__main__":
             trainer.validate(model, data_module)
         else:
             print("Re-training the pre-trained model.")
-            trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=3)#, log_every_n_steps=10)
+            trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=2)#, log_every_n_steps=10)
             trainer.fit(model, data_module)
     else:
         model = UNetLightning(lr=p.LEARNING_RATE)
-        trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=3)#, log_every_n_steps=10)
+        trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=2)#, log_every_n_steps=10)
         trainer.fit(model, data_module)
     
     if p.SAVE_PLOTS:

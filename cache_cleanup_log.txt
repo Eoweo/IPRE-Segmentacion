@@ -1,0 +1,3 @@
+Date         | Cache Folder Size  | Deleted Folder  | Deleted Size (GB) 
+----------------------------------------------------------------------
+         

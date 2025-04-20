@@ -7,6 +7,7 @@ SAVE_MODEL = True
 
 USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
+WORKERS = 5
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
                   "Chest CT Segmentation"] 
@@ -23,9 +24,9 @@ AUGMENTATION = True
 N_AUGMENTATION = 3
 RESIZE = True
 RESIZE_VALUE = (256,256)
-RATIO = 0.8
+RATIO = 0.7
 CHOP = True
-CHOP_VALUE = 1000
+CHOP_VALUE = 3000
 EPOCHS = 15
 BATCH_SIZE = 16
 LEARNING_RATE = 3e-4
