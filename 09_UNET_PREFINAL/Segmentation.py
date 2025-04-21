@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping
 import wandb
 from model import UNet
 from dataset import MainDataset, load_jpg_dataset_generator, initialize_patient_splits
@@ -17,7 +18,7 @@ import parameter as p
 import os
 
 class UNetLightning(L.LightningModule):
-    def __init__(self, in_channels=1, out_channels=1, lr=3e-4):
+    def __init__(self, in_channels=1, out_channels=1, lr=p.LEARNING_RATE):
         super(UNetLightning, self).__init__()
         self.save_hyperparameters()
         self.lr = lr
@@ -35,9 +36,9 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
-        self.log("train_loss", loss, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
-        self.log("train_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
-        self.log("train_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        self.log("train_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("train_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("train_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -48,25 +49,33 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
-        self.log("val_loss", loss, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
-        self.log("val_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
-        self.log("val_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        self.log("val_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("val_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("val_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
         return loss
+    
+    def on_validation_epoch_end(self):
+        torch.cuda.empty_cache()
     
     def configure_optimizers(self):
         return Adam(self.parameters(), lr=self.lr)
     
     def dice_coeff(self, y_hat, y):
-        y_hat = (y_hat > 0).float()
+        y_hat = torch.sigmoid(y_hat)
+        y_hat = (y_hat > 0.5).float()
+        y = (y > 0.5).float()
         intersection = (y_hat * y).sum()
         return (2. * intersection) / (y_hat.sum() + y.sum() + 1e-6)
     
     def accuracy(self, y_hat, y):
-        y_hat = (y_hat > 0).float()
+        y_hat = torch.sigmoid(y_hat)
+        y_hat = (y_hat > 0.5).float()
+        y = (y > 0.5).float()
         correct = (y_hat == y).sum()
         return correct.float() / y.numel()
     
     def plot_predictions(self, loader, device='cuda'):
+        self.to(device)
         self.eval()
         print("inicio de plot")
         images = []
@@ -78,6 +87,9 @@ class UNetLightning(L.LightningModule):
                 y = y.to(device).squeeze(1)  # Remove channel dimension
                 y_hat = self(x)  # Use self instead of model
     
+#                y_hat = torch.sigmoid(y_hat)            
+#                y_hat = (y_hat > 0.5).float()
+
                 x_np = x[:, 0].cpu().numpy()  
                 y_np = y.cpu().numpy()  
                 y_hat_np = y_hat.cpu().numpy()  # Ensure numpy conversion
@@ -132,38 +144,40 @@ class LungSegmentationDataModule(L.LightningDataModule):
         train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, patient_splits, dataset_type="train", target_size=p.RESIZE_VALUE, block_id=p.BLOCK_ID)
         test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, patient_splits, dataset_type="test", target_size=p.RESIZE_VALUE, block_id=p.BLOCK_ID)
         
-        self.train_dataset = MainDataset(train_generator, augmentation=True, dataset_type="Training")
+        self.train_dataset = MainDataset(train_generator, augmentation=p.AUGMENTATION, dataset_type="Training")
         self.val_dataset = MainDataset(test_generator, augmentation=False, dataset_type="Test")
     
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=p.WORKERS)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
     
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
 
 torch.set_float32_matmul_precision('high')
 
 if __name__ == "__main__":
-    wandb_logger = WandbLogger(project="unet-lightning-lung-segmentation", log_model="all")
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss")
-    
+    wandb_logger = WandbLogger(project="unet-lightning-lung-segmentation", log_model=False)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_top_k=0)
+    early_stop_callback = EarlyStopping(monitor ="val_dice", patience = round(p.EPOCHS*0.1, 0), verbose=True,mode="max")
     data_module = LungSegmentationDataModule()
-    
+
+    trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback, early_stop_callback], 
+                        max_epochs=p.EPOCHS, accelerator="gpu", devices=2, 
+                        precision="16-mixed", gradient_clip_val=1.0, 
+                        enable_progress_bar=True, log_every_n_steps=20)
+
     if p.USE_PRETRAINED_MODEL:
-        model = UNetLightning.load_from_checkpoint("model_final.ckpt")
+        model = UNetLightning.load_from_checkpoint(os.path.join(p.RESULT_DIR, "model_final.ckpt"))
         print("Loaded pre-trained model.")
-        
+
         if not p.RE_TRAIN_MODEL:
             print("Testing pre-trained model performance.")
-            trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], accelerator="gpu", devices=3, log_every_n_steps=10)
             trainer.validate(model, data_module)
         else:
             print("Re-training the pre-trained model.")
-            trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=2)#, log_every_n_steps=10)
             trainer.fit(model, data_module)
     else:
         model = UNetLightning(lr=p.LEARNING_RATE)
-        trainer = L.Trainer(logger=wandb_logger, callbacks=[checkpoint_callback], max_epochs=p.EPOCHS, accelerator="gpu", devices=2)#, log_every_n_steps=10)
         trainer.fit(model, data_module)
     
     if p.SAVE_PLOTS:

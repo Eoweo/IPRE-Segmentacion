@@ -56,7 +56,7 @@ def load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", ta
 
             patient_id = image_name.split("_")[0]
 
-            if patient_id in block_id or patient_id not in PATIENT_SPLITS[dataset_type]: #pass if it's a block patient
+            if patient_id in block_id or patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]: #pass if it's a block patient
                 pbar.update(1)
                 continue
             i += 1
@@ -104,12 +104,65 @@ def get_augmentation_pipeline():
         A.Resize(p.RESIZE_VALUE[0], p.RESIZE_VALUE[1] ),
     ])
 
+
+def Set_tif_Dataset(path, resize):
+
+    with Image.open(path) as img:
+        try:
+            while True:
+                # Convert each page to an RGB image
+                img_rgb = img.convert("L")
+
+                # Resize to the desired dimensions
+                img_resized = img_rgb.resize(resize)
+
+                # Convert to a NumPy array and normalize pixel values to [0, 255]
+                img_array = np.array(img_resized)/255.0
+
+                # Add to the list
+                yield img_array
+
+                # Move to the next page
+                img.seek(img.tell() + 1)
+        except EOFError:
+            pass  # End of the TIFF file
+
+def b_load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", target_size=p.RESIZE_VALUE, block_id=set()):
+     
+    if dataset_type == "test": 
+        image_path = os.path.join(p.PATH_DATASET,'EPFL', 'testing.tif')
+        mask_path = os.path.join(p.PATH_DATASET, 'EPFL','testing_groundtruth.tif')
+    else: 
+        image_path = os.path.join(p.PATH_DATASET,'EPFL', 'training.tif')
+        mask_path = os.path.join(p.PATH_DATASET, 'EPFL','training_groundtruth.tif')
+    
+    image_gen = Set_tif_Dataset(image_path, target_size)
+    mask_gen = Set_tif_Dataset(mask_path, target_size)
+
+    total_samples = sum(1 for _ in Set_tif_Dataset(image_path, target_size))
+
+    with tqdm(total=total_samples, desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, leave=True) as pbar:
+        i = 0
+        for img_array, mask_array in zip(image_gen, mask_gen):
+            pbar.update(1)
+
+            used_memory = psutil.virtual_memory().used / (1024**3)
+            total_memory = psutil.virtual_memory().total / (1024**3)
+            pbar.set_postfix({
+                "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
+                "N_Img": f"{i}"})
+            
+            i += 1
+
+            yield img_array, mask_array
+
 class MainDataset(Dataset):
-    def __init__(self, data, augmentation=True, dataset_type="test"):
+    def __init__(self, data, augmentation=p.AUGMENTATION, dataset_type="test"):
         self.images = []
         self.masks = []
         self.dataset_type = dataset_type
         self.augmentation = augmentation
+        self.transform = get_augmentation_pipeline() if augmentation else None
 
         # Load dataset into memory
         for img, mask in data:
@@ -125,7 +178,7 @@ class MainDataset(Dataset):
 
         # Apply augmentations if enabled
         if self.augmentation and self.dataset_type == "Training":
-            augmented = get_augmentation_pipeline(image=image, mask=mask)
+            augmented = self.transform(image=image, mask=mask)
             image = torch.tensor(augmented["image"], dtype=torch.float32).unsqueeze(0)
             mask = torch.tensor(augmented["mask"], dtype=torch.float32).unsqueeze(0)  
         else:

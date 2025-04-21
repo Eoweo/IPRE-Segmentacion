@@ -7,7 +7,7 @@ SAVE_MODEL = True
 
 USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
-WORKERS = 5
+WORKERS = 8
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
                   "Chest CT Segmentation"] 
@@ -20,14 +20,14 @@ BLOCK_ID = ["ID00035637202182204917484",
             "ID00426637202313170790466"]
 
 #VARIABLE
-AUGMENTATION = True
+AUGMENTATION = False
 N_AUGMENTATION = 3
 RESIZE = True
-RESIZE_VALUE = (256,256)
+RESIZE_VALUE = (128,128)
 RATIO = 0.7
-CHOP = True
-CHOP_VALUE = 3000
-EPOCHS = 15
+CHOP = False
+CHOP_VALUE = 10000
+EPOCHS = 100
 BATCH_SIZE = 16
 LEARNING_RATE = 3e-4
 SHUFFLE = True  

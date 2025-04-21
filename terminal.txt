@@ -1,4 +1,6 @@
-
+module load conda
+conda activate pyenv
+srun python Segmentation.py
 squeue
 nvidia-smi
 ps aux | grep 2772201
