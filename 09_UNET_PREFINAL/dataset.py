@@ -38,7 +38,7 @@ def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
     print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Test:", len(PATIENT_SPLITS["test"]))
     return PATIENT_SPLITS
 
-def load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", target_size=(128, 128), block_id=set()):
+def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS = dict(), dataset_type="test", block_id=set(), inference = p.INFERENCE):
      
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
@@ -56,9 +56,10 @@ def load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", ta
 
             patient_id = image_name.split("_")[0]
 
-            if patient_id in block_id or patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]: #pass if it's a block patient
-                pbar.update(1)
-                continue
+            if not inference: 
+                if patient_id in block_id or (patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]): #pass if it's a block patient
+                    pbar.update(1)
+                    continue
             i += 1
 
             image = Image.open(os.path.join(image_dir, image_name)).convert("L")

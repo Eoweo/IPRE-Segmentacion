@@ -1,13 +1,13 @@
 import lightning.pytorch as L
 import io
 import torch
-import imageio
-
+import imageio.v2 as imageio
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.callbacks import EarlyStopping
@@ -58,7 +58,9 @@ class UNetLightning(L.LightningModule):
         torch.cuda.empty_cache()
     
     def configure_optimizers(self):
-        return Adam(self.parameters(), lr=self.lr)
+        optimizer = Adam(self.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5, verbose=True    )
+        return {'optimizer': optimizer,'lr_scheduler': {'scheduler': scheduler, 'monitor': 'val_loss'} }
     
     def dice_coeff(self, y_hat, y):
         y_hat = torch.sigmoid(y_hat)
@@ -73,7 +75,18 @@ class UNetLightning(L.LightningModule):
         y = (y > 0.5).float()
         correct = (y_hat == y).sum()
         return correct.float() / y.numel()
-    
+
+    def infer_image(self, image_generator, device='cuda'):
+        self.eval()
+        self.to(device)
+        with torch.no_grad():
+            for x, y in image_generator:
+                x = x.to(device)                
+                y_hat = self(x)  # Use self instead of model
+                y_hat = torch.sigmoid(y_hat)
+                mask = (y_hat > 0.5).float()
+        return mask.squeeze(0).cpu()  # (C, H, W)
+
     def plot_predictions(self, loader, device='cuda'):
         self.to(device)
         self.eval()
@@ -87,19 +100,19 @@ class UNetLightning(L.LightningModule):
                 y = y.to(device).squeeze(1)  # Remove channel dimension
                 y_hat = self(x)  # Use self instead of model
     
-#                y_hat = torch.sigmoid(y_hat)            
-#                y_hat = (y_hat > 0.5).float()
+                y_hat_np = torch.sigmoid(y_hat)
+                y_hat_np = (y_hat_np > 0.5).float()
 
                 x_np = x[:, 0].cpu().numpy()  
                 y_np = y.cpu().numpy()  
-                y_hat_np = y_hat.cpu().numpy()  # Ensure numpy conversion
+                y_hat_np = y_hat_np.cpu().numpy()  # Ensure numpy conversion
     
                 for i in range(len(x_np)):
                     images.append(wandb.Image(x_np[i], caption=f"Input - Sample {i}", mode="L"))
                     images.append(wandb.Image(y_np[i], caption=f"Ground Truth - Sample {i}", mode="L"))
                     images.append(wandb.Image(y_hat_np[i], caption=f"Prediction - Sample {i}", mode="L"))
     
-                    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+                    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
                     axes[0].imshow(x_np[i], cmap="gray")
                     axes[0].set_title("Input Image")
                     axes[0].axis("off")
@@ -108,9 +121,13 @@ class UNetLightning(L.LightningModule):
                     axes[1].set_title("Ground Truth Mask")
                     axes[1].axis("off")
     
-                    axes[2].imshow(y_hat_np[i], cmap="gray")
+                    axes[2].imshow(y_hat[i].cpu().numpy(), cmap="gray", vmin=0, vmax=1 )
                     axes[2].set_title("Prediction")
                     axes[2].axis("off")
+
+                    axes[3].imshow(y_hat_np[i].cpu().numpy(), cmap="gray", vmin=0, vmax=1 )
+                    axes[3].set_title("Prediction_sigmoid>0.5")
+                    axes[3].axis("off")
     
                     buf = io.BytesIO()
                     plt.savefig(buf, format="png")
@@ -141,8 +158,11 @@ class LungSegmentationDataModule(L.LightningDataModule):
     
     def setup(self, stage=None):
         patient_splits = initialize_patient_splits(p.PATH_CT_MARCOPOLO)
-        train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, patient_splits, dataset_type="train", target_size=p.RESIZE_VALUE, block_id=p.BLOCK_ID)
-        test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, patient_splits, dataset_type="test", target_size=p.RESIZE_VALUE, block_id=p.BLOCK_ID)
+        train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
+                                                     PATIENT_SPLITS = patient_splits, dataset_type="train",  block_id=p.BLOCK_ID)
+
+        test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
+                                                    PATIENT_SPLITS = patient_splits, dataset_type="test", block_id=p.BLOCK_ID)
         
         self.train_dataset = MainDataset(train_generator, augmentation=p.AUGMENTATION, dataset_type="Training")
         self.val_dataset = MainDataset(test_generator, augmentation=False, dataset_type="Test")
@@ -179,6 +199,10 @@ if __name__ == "__main__":
     else:
         model = UNetLightning(lr=p.LEARNING_RATE)
         trainer.fit(model, data_module)
+    
+    if p.INFERENCE:
+        inference_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, dataset_type= "inference")
+        model.infer_image(inference_generator)
     
     if p.SAVE_PLOTS:
         model.plot_predictions(data_module.val_dataloader())

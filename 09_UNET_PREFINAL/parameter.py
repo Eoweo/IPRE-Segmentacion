@@ -4,6 +4,7 @@ import os
 TEST_SELECTED_INDEX = 0
 SAVE_PLOTS = True
 SAVE_MODEL = True
+INFERENCE = False
 
 USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
@@ -37,5 +38,8 @@ MULTI_CLASS = False
 RESULT_DIR = os.path.join("/mnt", "workspace", "cmorenor", "RESULT")
 PATH_DATASET = os.path.join('/mnt','researchers','marcelo-andia','datasets')
 PATH_CT_MARCOPOLO = os.path.join(PATH_DATASET,'CT-Chest', 'Marco Polo')
+PATH_CT_IMAGE = os.path.join(PATH_CT_MARCOPOLO, "archive", "images", "images")
+PATH_CT_MASK =  os.path.join(PATH_CT_MARCOPOLO, "archive", "masks", "masks")
 PATH_EPFL = os.path.join(PATH_DATASET,'EPFL')
+INFERENCE_PATH = os.path.join(PATH_DATASET,'EPFL')
 
