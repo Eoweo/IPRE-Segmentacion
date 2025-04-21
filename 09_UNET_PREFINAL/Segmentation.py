@@ -190,19 +190,18 @@ if __name__ == "__main__":
         model = UNetLightning.load_from_checkpoint(os.path.join(p.RESULT_DIR, "model_final.ckpt"))
         print("Loaded pre-trained model.")
 
-        if not p.RE_TRAIN_MODEL:
-            print("Testing pre-trained model performance.")
-            trainer.validate(model, data_module)
-        else:
+        if p.RE_TRAIN_MODEL:
             print("Re-training the pre-trained model.")
             trainer.fit(model, data_module)
+        elif p.INFERENCE:
+            inference_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, dataset_type= "inference")
+            model.infer_image(inference_generator)
+        else:
+            print("Testing pre-trained model performance.")
+            trainer.validate(model, data_module)
     else:
         model = UNetLightning(lr=p.LEARNING_RATE)
         trainer.fit(model, data_module)
-    
-    if p.INFERENCE:
-        inference_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, dataset_type= "inference")
-        model.infer_image(inference_generator)
     
     if p.SAVE_PLOTS:
         model.plot_predictions(data_module.val_dataloader())
