@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name UNET_CT_Dataset # Custom name
-#SBATCH -t 1-00:00 # Max runtime of 30 minutes
+#SBATCH -t 3-00:00 # Max runtime of 30 minutes
 #SBATCH -p batch # Choose partition
 #SBATCH -q batch # Choose QoS, must be same as partition
 #SBATCH --cpus-per-task 8 # Request 2 cores

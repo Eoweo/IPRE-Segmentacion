@@ -90,6 +90,7 @@ Database/
 *.pth
 *.ckpt
 *.zip
+*.gif
 datasets/
 *wandb
 **/wandb/

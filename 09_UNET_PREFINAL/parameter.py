@@ -5,6 +5,7 @@ TEST_SELECTED_INDEX = 0
 SAVE_PLOTS = True
 SAVE_MODEL = True
 INFERENCE = False
+EARLY_STOP = False
 
 USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
@@ -18,17 +19,28 @@ BLOCK_ID = ["ID00035637202182204917484",
             "ID00139637202231703564336",
             "ID00014637202177757139317",
             "ID00032637202181710233084",
-            "ID00426637202313170790466"]
-
+            "ID00426637202313170790466",
+            "ID00075637202198610425520",
+            "ID00104637202208063407045",
+            "ID00123637202217151272140"]
+#ID00104637202208063407045 -> mascaras estan al revés que imagenes osea imagen 0 -> mask 497
+#ID00075637202198610425520 -> mascaras estan al revés que imagenes
+#ID00426637202313170790466 -> mascaras estan al revés que imagenes
+#ID00123637202217151272140
 #VARIABLE
-AUGMENTATION = False
+AUGMENTATION = True
 N_AUGMENTATION = 3
-RESIZE = True
-RESIZE_VALUE = (128,128)
-RATIO = 0.7
-CHOP = False
-CHOP_VALUE = 10000
-EPOCHS = 100
+RESIZE = False
+RESIZE_VALUE = (512,512)
+RATIO = 0.8
+
+CHOP_DATA = False
+CHOP_DATA_VALUE = 10000
+
+CHOP_PATIENT = True
+CHOP_PATIENT_VALUE = 50
+
+EPOCHS = 20
 BATCH_SIZE = 16
 LEARNING_RATE = 3e-4
 SHUFFLE = True  
