@@ -9,3 +9,5 @@ du -lh
 quota-pretty
 conda clean --all
 du -sh *                     #### Check all dir sizes in a folder
+
+git reset --soft HEAD^ ### for delete last commit
