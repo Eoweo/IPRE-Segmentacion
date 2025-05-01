@@ -36,12 +36,14 @@ def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
     else:
         split_index = int(round((len(patient_ids)) * test_ratio, 0))
         max_index = int(len(patient_ids))
+    
+    val_index = int(round((max_index + split_index)/2,0))
 
-    max_index = int(round(split_index/p.RATIO, 0))
     PATIENT_SPLITS["train"] = set(patient_ids[:split_index])
-    PATIENT_SPLITS["test"] = set(patient_ids[split_index:max_index])
+    PATIENT_SPLITS["validation"] = set(patient_ids[split_index:val_index])
+    PATIENT_SPLITS["test"] = set(patient_ids[val_index:max_index])
 
-    print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Test:", len(PATIENT_SPLITS["test"]))
+    print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Validation:", len(PATIENT_SPLITS["validation"]), "Test:", len(PATIENT_SPLITS["test"]))
     return PATIENT_SPLITS
 
 def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS = dict(), dataset_type="test", block_id=set(), inference = p.INFERENCE):
@@ -57,10 +59,10 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
     with tqdm(total=len(data), desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, leave=True) as pbar:
         i = 0
         for _, row in data.iterrows():
-            image_name = row["ImageId"]
+            image_id = row["ImageId"]
             mask_name = row["MaskId"]
 
-            patient_id = image_name.split("_")[0]
+            patient_id = image_id.split("_")[0]
 
             if not inference: 
                 if patient_id in block_id or (patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]): #pass if it's a block patient
@@ -68,7 +70,7 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
                     continue
             i += 1
 
-            image = Image.open(os.path.join(image_dir, image_name)).convert("L")
+            image = Image.open(os.path.join(image_dir, image_id)).convert("L")
             mask = Image.open(os.path.join(mask_dir, mask_name)).convert("RGB")
 
             if p.RESIZE:
@@ -90,7 +92,7 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
                 "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
                 "N_Img": f"{i}"})
             
-            yield image, mask, image_name  # Instead of storing, yield one image at a time
+            yield image, mask, image_id  # Instead of storing, yield one image at a time
 
 
 def calculate_brightness_and_saturation(image):
@@ -241,19 +243,18 @@ class MainDataset(Dataset):
         id = self.id[idx]
 
         # Normalize image values to [0, 255] if needed
-        image = image.astype(np.uint8) if image.max() <= 1.0 else image
-
-        if self.augmentation and self.dataset_type == "Training":
-            transform = get_adaptive_augmentation_pipeline(image)  # <-- Call here
-            augmented = transform(image=image, mask=mask)
-            image = augmented["image"]
-            mask = augmented["mask"]
+        
+        #if self.augmentation and self.dataset_type == "Training":
+        #    transform = get_adaptive_augmentation_pipeline(image)  # <-- Call here
+        #    augmented = transform(image=image, mask=mask)
+        #    image = augmented["image"]
+        #    mask = augmented["mask"]
 
         # Convert image and mask to torch tensors
-        if len(image.shape) == 2:  # Grayscale
-            image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
-        else:  # RGB
-            image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32)
+        #if len(image.shape) == 2:  # Grayscale
+        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
+        #else:  # RGB
+        #    image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32)
 
         mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)
 

@@ -22,13 +22,16 @@ BLOCK_ID = ["ID00035637202182204917484",
             "ID00426637202313170790466",
             "ID00075637202198610425520",
             "ID00104637202208063407045",
-            "ID00123637202217151272140"]
+            "ID00123637202217151272140",
+            "ID00109637202210454292264"]
 #ID00104637202208063407045 -> mascaras estan al revés que imagenes osea imagen 0 -> mask 497
 #ID00075637202198610425520 -> mascaras estan al revés que imagenes
 #ID00426637202313170790466 -> mascaras estan al revés que imagenes
 #ID00123637202217151272140
+#ID00109637202210454292264
 #VARIABLE
-AUGMENTATION = True
+
+AUGMENTATION = False
 N_AUGMENTATION = 3
 RESIZE = False
 RESIZE_VALUE = (512,512)
@@ -53,5 +56,5 @@ PATH_CT_MARCOPOLO = os.path.join(PATH_DATASET,'CT-Chest', 'Marco Polo')
 PATH_CT_IMAGE = os.path.join(PATH_CT_MARCOPOLO, "archive", "images", "images")
 PATH_CT_MASK =  os.path.join(PATH_CT_MARCOPOLO, "archive", "masks", "masks")
 PATH_EPFL = os.path.join(PATH_DATASET,'EPFL')
-INFERENCE_PATH = os.path.join(PATH_DATASET,'EPFL')
+INFERENCE_PATH = os.path.join(RESULT_DIR, "..", "INFERENCE")
 

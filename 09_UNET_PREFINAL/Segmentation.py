@@ -30,7 +30,7 @@ class UNetLightning(L.LightningModule):
     def forward(self, x):
         return self.model(x)
     
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch):
         x, y, id = batch
         x, y = x, y.squeeze(1)
         y = (y > 0.5).float()
@@ -39,12 +39,13 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
+        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
         self.log("train_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
         self.log("train_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
         return loss
     
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch):
         x, y, id = batch
         x, y = x, y.squeeze(1)
         y_hat = self(x)
@@ -52,6 +53,7 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
+        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True)
         self.log("val_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
         self.log("val_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
         self.log("val_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
@@ -62,7 +64,7 @@ class UNetLightning(L.LightningModule):
     
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5, verbose=True    )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5, verbose=True)
         return {'optimizer': optimizer,'lr_scheduler': {'scheduler': scheduler, 'monitor': 'val_loss'} }
     
     def dice_coeff(self, y_hat, y):
@@ -131,7 +133,7 @@ class UNetLightning(L.LightningModule):
                     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
                     axes[0].imshow(x_np[i], cmap="gray")
-                    axes[0].set_title(f"Input Image {id[i]}")
+                    axes[0].set_title(f"Test Image {id[i]}")
                     axes[0].axis("off")
     
                     axes[1].imshow(y_np[i], cmap="gray")
@@ -139,7 +141,7 @@ class UNetLightning(L.LightningModule):
                     axes[1].axis("off")
 
                     axes[2].imshow(y_hat_np[i], cmap="gray", vmin=0, vmax=1 )
-                    axes[2].set_title(f"Prediction_sigmoid")
+                    axes[2].set_title(f"Inference, {y_hat.shape}")
                     axes[2].axis("off")
 
                     buf = io.BytesIO()
@@ -172,14 +174,16 @@ class LungSegmentationDataModule(L.LightningDataModule):
         patient_splits = initialize_patient_splits(p.PATH_CT_MARCOPOLO)
         train_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
                                                      PATIENT_SPLITS = patient_splits, dataset_type="train",  block_id=p.BLOCK_ID)
-
+        
+        validation_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
+                                                    PATIENT_SPLITS = patient_splits, dataset_type="test", block_id=p.BLOCK_ID)
+        
         test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
                                                     PATIENT_SPLITS = patient_splits, dataset_type="test", block_id=p.BLOCK_ID)
-
         
         self.train_dataset = MainDataset(train_generator, augmentation=p.AUGMENTATION, dataset_type="Training")
-        self.val_dataset = MainDataset(test_generator, augmentation=False, dataset_type="Test")
-        self.val2_dataset = MainDataset(test_generator, augmentation=True, dataset_type="Test")
+        self.val_dataset = MainDataset(validation_generator, augmentation=False, dataset_type="test")
+        self.test_dataset = MainDataset(test_generator, augmentation=False, dataset_type="test")
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=p.SHUFFLE, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
@@ -187,8 +191,8 @@ class LungSegmentationDataModule(L.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
 
-    def val2_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
+    def test_dataloader(self):
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
 
 
 torch.set_float32_matmul_precision('high')
@@ -208,7 +212,7 @@ if __name__ == "__main__":
                         enable_progress_bar=True, log_every_n_steps=20)
 
     if p.USE_PRETRAINED_MODEL:
-        model = UNetLightning.load_from_checkpoint(os.path.join(p.RESULT_DIR, "model_final.ckpt"))
+        model = UNetLightning.load_from_checkpoint(os.path.join(p.RESULT_DIR, "model.ckpt"))
         print("Loaded pre-trained model.")
 
         if p.RE_TRAIN_MODEL:
@@ -225,16 +229,17 @@ if __name__ == "__main__":
         trainer.fit(model, data_module)
     
     if p.SAVE_PLOTS:
-        model.plot_predictions(data_module.val2_dataloader())
+        model.plot_predictions(data_module.test_dataloader())
 
     if p.SAVE_MODEL:
         model_name = model.get_model_name(folder=p.RESULT_DIR)
         model_path = os.path.join(p.RESULT_DIR, "model.ckpt")
         trainer.save_checkpoint(model_path)
         wandb.save(model_path)
-        torch.save(model.state_dict(), "model_final.pth")
-        wandb.save("model_final.pth")
-        os.remove("model_final.pth")
+        model_path_2 = os.path.join(p.RESULT_DIR, "model.pth")
+        torch.save(model.state_dict(), model_path_2)
+        wandb.save(model_path_2)
+        #os.remove("model_final.pth")
         print("Model saved and uploaded.")
     
     wandb.finish()
