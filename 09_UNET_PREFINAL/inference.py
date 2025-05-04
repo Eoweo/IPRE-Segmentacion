@@ -30,9 +30,10 @@ with torch.no_grad():
         image = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device) # [batch_size, channels, height, width]
 
         y_hat = model(image)
+        print("y_hat min/max:", y_hat.min().item(), y_hat.max().item())
 
         if NUM_CLASSES == 1:
-            pred_mask = (torch.sigmoid(y_hat) > 0.5).float()
+            pred_mask = (y_hat > 0.5).float()
         else:
             pred_mask = torch.argmax(torch.softmax(y_hat, dim=1), dim=1, keepdim=True).float()
         

@@ -4,20 +4,15 @@ import cv2
 import time
 import torch
 import psutil
-import random
+import random as r
 import copy as c
 import numpy as np
 import pandas as pd
 import parameter as p
 from PIL import Image
 from tqdm import tqdm
-from scipy import ndimage
 import albumentations as A
-from multiprocessing import Pool
-from collections import defaultdict
 from torch.utils.data import Dataset
-from albumentations.pytorch import ToTensorV2
-from torchvision.transforms.functional import rotate
 
 def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
  
@@ -29,7 +24,7 @@ def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
     patient_ids = list(set(row['ImageId'].split('_')[0] for _, row in data.iterrows()))
 
     # Shuffle and split
-    random.shuffle(patient_ids)
+    r.shuffle(patient_ids)
     if p.CHOP_PATIENT:
         split_index = int(round(p.CHOP_PATIENT_VALUE * test_ratio, 0))
         max_index = int(p.CHOP_PATIENT_VALUE)
@@ -94,139 +89,40 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
             
             yield image, mask, image_id  # Instead of storing, yield one image at a time
 
+def histogram_equalization(image: np.ndarray) -> np.ndarray:
+    if image.dtype != np.uint8:
+        image = (image * 255).clip(0, 255).astype(np.uint8)
 
-def calculate_brightness_and_saturation(image):
-    if len(image.shape) == 2 or image.shape[2] == 1:  # Grayscale image
-        # For grayscale: Brightness = mean pixel value, Saturation = 0
-        brightness = np.mean(image) / 255.0
-        saturation = 0.0
-    else:  # RGB image
-        hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-        brightness = hsv[..., 2].mean() / 255.0  # Value channel
-        saturation = hsv[..., 1].mean() / 255.0   # Saturation channel
-    return brightness, saturation
+    hist, bins = np.histogram(image.flatten(), 256, [0, 256])
+    cdf = hist.cumsum()
+    cdf_masked = np.ma.masked_equal(cdf, 0)
+    cdf_normalized = (cdf_masked - cdf_masked.min()) * 255 / (cdf_masked.max() - cdf_masked.min())
+    cdf_final = np.ma.filled(cdf_normalized, 0).astype('uint8')
+
+    img_eq = cdf_final[image]
+    return img_eq.astype(np.float32) / 255.0
 
 def get_adaptive_augmentation_pipeline(image):
-
     height, width = image.shape[:2]
-
-    brightness, saturation = calculate_brightness_and_saturation(image)
-
-    brightness_strength = max(0.1, 0.3 - brightness)
-    contrast_strength = max(0.1, 1.0 - saturation)
-
-    # Transformations that affect both image and mask
-    geometric_transforms = [
+    random_crop = r.randint(int(height/2), height)
+    # Geometric transformations that affect both image and mask
+    transforms = [
         A.HorizontalFlip(p=0.5),
-        A.RandomCrop(height=height, width=width, p=0.8),
-        A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, p=0.8),
-        A.Rotate(limit=10, p=0.8),
+        A.RandomSizedCrop(min_max_height=(random_crop - 1, random_crop), size=(random_crop , random_crop), p=0.8),
+        A.PadIfNeeded(min_height=height, min_width=width, fill= 0, fill_mask= 0, p=1.0),
+        A.Rotate(limit=25, p=0.8),
+        A.Resize(height, width)
     ]
 
-    # Only apply color transforms to the image
-    #color_transforms = [
-    #    A.OneOf([
-    #        A.RandomBrightnessContrast(
-    #            brightness_limit=(-0.1, brightness_strength),
-    #            contrast_limit=(0.5, contrast_strength),
-    #            p=1.0
-    #        ),
-    #        A.ColorJitter(
-    #            brightness=0.2 * (1 - brightness),
-    #            contrast=0.2 * (1 - saturation),
-    #            saturation=0.2 * (1 - saturation),
-    #            hue=0.1,
-    #            p=1.0
-    #        ),
-    #    ], p=0.8)
-    #]
-
-    # Full pipeline
-    return A.Compose(
-        transforms = geometric_transforms + #color_transforms + 
-        [A.Resize(height, width)], additional_targets={'mask': 'mask'}
-    )
-
-
-def get_augmentation_pipeline():
-    return A.Compose([
-
-        A.HorizontalFlip(p=0.5),
-
-        A.RandomCrop(p.RESIZE_VALUE[0],p.RESIZE_VALUE[1], p=0.8) if p.RESIZE 
-                else A.RandomCrop(height=512, width=512, p=0.8), 
-        A.PadIfNeeded(min_height=512, min_width=512, border_mode=0, p=0.8),
-        A.Rotate(limit=10, p=0.8),
-
-        # Image-only transformations
-        #A.OneOf([
-        #    A.RandomBrightnessContrast(brightness_limit=(0.29, 0.3), contrast_limit=(0.5, .510), p=1.0),
-        #    A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
-        #], p=0),
-
-        A.Resize(p.RESIZE_VALUE[0], p.RESIZE_VALUE[1] ),
-    ])
-
-
-def Set_tif_Dataset(path, resize):
-
-    with Image.open(path) as img:
-        try:
-            while True:
-                # Convert each page to an RGB image
-                img_rgb = img.convert("L")
-
-                # Resize to the desired dimensions
-                img_resized = img_rgb.resize(resize)
-
-                # Convert to a NumPy array and normalize pixel values to [0, 255]
-                img_array = np.array(img_resized)/255.0
-
-                # Add to the list
-                yield img_array
-
-                # Move to the next page
-                img.seek(img.tell() + 1)
-        except EOFError:
-            pass  # End of the TIFF file
-
-def b_load_jpg_dataset_generator(abs_path, PATIENT_SPLITS, dataset_type="test", target_size=p.RESIZE_VALUE, block_id=set()):
-     
-    if dataset_type == "test": 
-        image_path = os.path.join(p.PATH_DATASET,'EPFL', 'testing.tif')
-        mask_path = os.path.join(p.PATH_DATASET, 'EPFL','testing_groundtruth.tif')
-    else: 
-        image_path = os.path.join(p.PATH_DATASET,'EPFL', 'training.tif')
-        mask_path = os.path.join(p.PATH_DATASET, 'EPFL','training_groundtruth.tif')
-    
-    image_gen = Set_tif_Dataset(image_path, target_size)
-    mask_gen = Set_tif_Dataset(mask_path, target_size)
-
-    total_samples = sum(1 for _ in Set_tif_Dataset(image_path, target_size))
-
-    with tqdm(total=total_samples, desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, leave=True) as pbar:
-        i = 0
-        for img_array, mask_array in zip(image_gen, mask_gen):
-            pbar.update(1)
-
-            used_memory = psutil.virtual_memory().used / (1024**3)
-            total_memory = psutil.virtual_memory().total / (1024**3)
-            pbar.set_postfix({
-                "Mem": f"{used_memory:.2f} / {total_memory:.2f} GB",
-                "N_Img": f"{i}"})
-            
-            i += 1
-
-            yield img_array, mask_array
+    return A.Compose(transforms, additional_targets={'mask': 'mask'})
 
 class MainDataset(Dataset):
     def __init__(self, data, augmentation=p.AUGMENTATION, dataset_type="test"):
         self.images = []
         self.masks = []
         self.id = []
-        self.dataset_type = dataset_type
+        self.dataset_type = dataset_type.lower() # prevenir error de mayus
         self.augmentation = augmentation
-        self.transform = get_adaptive_augmentation_pipeline() if augmentation else None
 
         # Load dataset into memory
         for img, mask, id in data:
@@ -242,20 +138,24 @@ class MainDataset(Dataset):
         mask = self.masks[idx]
         id = self.id[idx]
 
-        # Normalize image values to [0, 255] if needed
+            
+        if self.augmentation and self.dataset_type in ["train", "test"]:
+
+            if r.randint(0,100) < 40:
+                image = histogram_equalization(image)
+            
+            #convert for albumination to work
+            image = (image * 255).astype(np.uint8)
+            mask = (mask * 255).astype(np.uint8)
+            transform = get_adaptive_augmentation_pipeline(image)  # <-- Call here
+            augmented = transform(image=image, mask=mask)
+            
+            #we normalice again
+            image = augmented["image"].astype(np.float32) / 255.0
+            mask = augmented["mask"].astype(np.float32) / 255.0
         
-        #if self.augmentation and self.dataset_type == "Training":
-        #    transform = get_adaptive_augmentation_pipeline(image)  # <-- Call here
-        #    augmented = transform(image=image, mask=mask)
-        #    image = augmented["image"]
-        #    mask = augmented["mask"]
-
-        # Convert image and mask to torch tensors
-        #if len(image.shape) == 2:  # Grayscale
+        #make the tensors
         image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
-        #else:  # RGB
-        #    image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32)
-
         mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)
 
         return image, mask, id

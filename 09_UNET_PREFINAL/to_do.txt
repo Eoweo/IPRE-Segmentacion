@@ -1,9 +1,9 @@
 
-* Hacer ecualización de histograma
-* data augmentation (importante)
-* Evaluar el dice score testing  (importante)
-* Hacer una función que se encargue de realizar la inferencia
-* Enviar datos de MRI
+v- Hacer ecualización de histograma
+v- data augmentation (importante)
+v- Evaluar el dice score testing  (importante)
+v- Hacer una función que se encargue de realizar la inferencia
+v- Enviar datos de MRI
 * Hacer readme explicando todo
 * Busqueda de parametros (hacer busqueda)
 v- Hacer test de testing 10%, validation 10% y 80% (importante testing != validación)

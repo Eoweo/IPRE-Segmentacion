@@ -39,10 +39,10 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
-        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True)
-        self.log("train_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
-        self.log("train_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
-        self.log("train_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True, batch_size=p.BATCH_SIZE)
+        self.log("train_loss", loss, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
+        self.log("train_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
+        self.log("train_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
         return loss
     
     def validation_step(self, batch):
@@ -53,10 +53,10 @@ class UNetLightning(L.LightningModule):
         dice_score = self.dice_coeff(y_hat, y)
         accuracy = self.accuracy(y_hat, y)
         
-        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True)
-        self.log("val_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
-        self.log("val_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True)
-        self.log("val_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("epoch", self.current_epoch, on_step=False, on_epoch=True, batch_size=p.BATCH_SIZE)
+        self.log("val_loss", loss, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
+        self.log("val_dice", dice_score, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
+        self.log("val_accuracy", accuracy, on_epoch=True, on_step=False, prog_bar=True, batch_size=p.BATCH_SIZE)
         return loss
     
     def on_validation_epoch_end(self):
@@ -99,7 +99,7 @@ class UNetLightning(L.LightningModule):
         gif_frames = []
     
         with torch.no_grad():
-            all_probs = []
+            step_i = 0
             for x, y, id in loader:
                 x = x.to(device)
                 y = y.to(device).squeeze(1)  # Remove channel dimension
@@ -111,24 +111,34 @@ class UNetLightning(L.LightningModule):
                 y_hat_np = (y_hat > 0.5).float()
                 y_hat_np = y_hat_np.cpu().numpy()  # Ensure numpy conversion
 
-                # 2. Histograma de probabilidades → se envía a WandB
-
-                flat_probs = y_hat_np.flatten()
-                fig_hist = plt.figure(figsize=(6, 4))
-                plt.hist(flat_probs, bins=50, color='gray')
-                plt.title("Distribución de valores predichos (sigmoid)")
-                plt.xlabel("Probabilidad")
-                plt.ylabel("Frecuencia")
-                plt.grid(True)
-
-                # 3. Log en WandB
-                self.logger.experiment.log({"Sigmoid Output Histogram": wandb.Image(fig_hist)})
-                plt.close(fig_hist)
-
+                ## 2. Histograma de probabilidades → se envía a WandB
+#
+                #flat_probs = y_hat_np.flatten()
+                #fig_hist = plt.figure(figsize=(6, 4))
+                #plt.hist(flat_probs, bins=50, color='gray')
+                #plt.title("Distribución de valores predichos (sigmoid)")
+                #plt.xlabel("Probabilidad")
+                #plt.ylabel("Frecuencia")
+                #plt.grid(True)
+#
+                ## 3. Log en WandB
+                #self.logger.experiment.log({"Sigmoid Output Histogram": wandb.Image(fig_hist)})
+                #plt.close(fig_hist)
+                
                 for i in range(len(x_np)):
-                    images.append(wandb.Image(x_np[i], caption=f"Input - Sample {i}", mode="L"))
-                    images.append(wandb.Image(y_np[i], caption=f"Ground Truth - Sample {i}", mode="L"))
-                    images.append(wandb.Image(y_hat_np[i], caption=f"Prediction - Sample {i}", mode="L"))
+                    step_i = step_i + 1
+                    pred_i = torch.tensor(y_hat_np[i], dtype=torch.float32).unsqueeze(0)
+                    true_i = torch.tensor(y_np[i], dtype=torch.float32).unsqueeze(0)
+
+                    dice_score = self.dice_coeff(pred_i, true_i)
+                    accuracy = self.accuracy(pred_i, true_i)
+                    wandb.log({
+                        "test_dice": dice_score,
+                        "test_accuracy": accuracy
+                    }, step=step_i)
+                    images.append(wandb.Image(x_np[i], caption=f"Input {i}", mode="L"))
+                    images.append(wandb.Image(y_np[i], caption=f"Ground Truth {i}", mode="L"))
+                    images.append(wandb.Image(y_hat_np[i], caption=f"Prediction - Dice: {dice_score:.3f} | Acc: {accuracy:.3f}"))
 
                     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
@@ -141,7 +151,7 @@ class UNetLightning(L.LightningModule):
                     axes[1].axis("off")
 
                     axes[2].imshow(y_hat_np[i], cmap="gray", vmin=0, vmax=1 )
-                    axes[2].set_title(f"Inference, {y_hat.shape}")
+                    axes[2].set_title(f"Test Inference - Dice: {dice_score:.3f} | Acc: {accuracy:.3f}")
                     axes[2].axis("off")
 
                     buf = io.BytesIO()
@@ -151,19 +161,10 @@ class UNetLightning(L.LightningModule):
                     gif_frames.append(imageio.imread(buf))
             
         self.logger.experiment.log({"Segmentation Results": images})
-
-        gif_path = "predictions_over_epochs.gif"
+        gif_name = get_name(base_name = "predictions",folder=p.RESULT_DIR, ext=".gif")
+        gif_path = os.path.join(p.RESULT_DIR, gif_name)
         imageio.mimsave(gif_path, gif_frames, duration=0.5)
         self.logger.experiment.log({"Predictions GIF": wandb.Video(gif_path, fps=2, format="gif")})
-
-    def get_model_name(base_name="v0", folder=".", ext=".ckpt"):
-        """Find the next available zip file name with incremental numbering."""
-        version = 1
-        while True:
-            name = f"model_{base_name}{version:02d}{ext}"
-            if not os.path.exists(os.path.join(folder, name)):
-                return name
-            version += 1
 
 class LungSegmentationDataModule(L.LightningDataModule):
     def __init__(self, batch_size=p.BATCH_SIZE):
@@ -176,13 +177,13 @@ class LungSegmentationDataModule(L.LightningDataModule):
                                                      PATIENT_SPLITS = patient_splits, dataset_type="train",  block_id=p.BLOCK_ID)
         
         validation_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
-                                                    PATIENT_SPLITS = patient_splits, dataset_type="test", block_id=p.BLOCK_ID)
+                                                    PATIENT_SPLITS = patient_splits, dataset_type="validation", block_id=p.BLOCK_ID)
         
         test_generator = load_jpg_dataset_generator(p.PATH_CT_MARCOPOLO, target_size=p.RESIZE_VALUE, 
                                                     PATIENT_SPLITS = patient_splits, dataset_type="test", block_id=p.BLOCK_ID)
         
-        self.train_dataset = MainDataset(train_generator, augmentation=p.AUGMENTATION, dataset_type="Training")
-        self.val_dataset = MainDataset(validation_generator, augmentation=False, dataset_type="test")
+        self.train_dataset = MainDataset(train_generator, augmentation=p.AUGMENTATION, dataset_type="train")
+        self.val_dataset = MainDataset(validation_generator, augmentation=False, dataset_type="validation")
         self.test_dataset = MainDataset(test_generator, augmentation=False, dataset_type="test")
 
     def train_dataloader(self):
@@ -194,6 +195,13 @@ class LungSegmentationDataModule(L.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=p.WORKERS, persistent_workers=True, pin_memory=True, prefetch_factor=4)
 
+def get_name(base_name, folder, ext=".ckpt"):
+    version = 0
+    while True:
+        name = f"{base_name}_{version:02d}{ext}"
+        if not os.path.exists(os.path.join(folder, name)):
+            return os.path.join(p.RESULT_DIR, name)
+        version += 1
 
 torch.set_float32_matmul_precision('high')
 
@@ -232,14 +240,14 @@ if __name__ == "__main__":
         model.plot_predictions(data_module.test_dataloader())
 
     if p.SAVE_MODEL:
-        model_name = model.get_model_name(folder=p.RESULT_DIR)
-        model_path = os.path.join(p.RESULT_DIR, "model.ckpt")
-        trainer.save_checkpoint(model_path)
-        wandb.save(model_path)
-        model_path_2 = os.path.join(p.RESULT_DIR, "model.pth")
-        torch.save(model.state_dict(), model_path_2)
-        wandb.save(model_path_2)
-        #os.remove("model_final.pth")
-        print("Model saved and uploaded.")
+        model_name_1 = get_name(base_name = "model",folder=p.RESULT_DIR, ext=".ckpt")
+        trainer.save_checkpoint(model_name_1)
+        wandb.save(model_name_1)
+        
+        model_name_2 = get_name(base_name = "model",folder=p.RESULT_DIR, ext=".pth")
+        torch.save(model.model.state_dict(), model_name_2)
+        wandb.save(model_name_2)
+        
+        print(f"Model saved and uploaded in {model_name_2}.")
     
     wandb.finish()
