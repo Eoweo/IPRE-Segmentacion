@@ -87,6 +87,7 @@ Thumbs.db
 private/
 Database/
 05_UNET_v01/RESULT
+*.json
 *.pth
 *.ckpt
 *.zip

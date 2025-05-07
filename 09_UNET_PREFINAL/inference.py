@@ -5,7 +5,7 @@ import numpy as np
 from model import UNet 
 import parameter as p  
 
-model_path = os.path.join(p.RESULT_DIR, "model.pth")
+model_path = os.path.join(p.RESULT_DIR, "model_00.pth")
 NUM_CLASSES = 1  # 1 for binary, >1 for multiclass
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -1,6 +1,7 @@
 import os
 import gc
 import cv2
+import json
 import time
 import torch
 import psutil
@@ -15,16 +16,27 @@ import albumentations as A
 from torch.utils.data import Dataset
 
 def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
- 
-    PATIENT_SPLITS = {"train": set(), "test": set()}
+    json_path = os.path.join("patient_splits.json")
+
+    # Si el archivo ya existe, simplemente lo carga
+    if os.path.exists(json_path):
+        with open(json_path, "r") as f:
+            PATIENT_SPLITS = json.load(f)
+        # Convierte listas de nuevo a sets
+        for k in PATIENT_SPLITS:
+            PATIENT_SPLITS[k] = set(PATIENT_SPLITS[k])
+        print(f"Patient split loaded from {json_path}")
+        return PATIENT_SPLITS
+
+    # Si no existe, lo genera y lo guarda
+    PATIENT_SPLITS = {"train": set(), "validation": set(), "test": set()}
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
 
-    # Extract unique patient IDs
-    patient_ids = list(set(row['ImageId'].split('_')[0] for _, row in data.iterrows()))
+    patient_ids = list(set(row['ImageId'].split('_')[0] for _, row in data.iterrows()if row['ImageId'].split('_')[0] not in p.BLOCK_ID))
 
-    # Shuffle and split
     r.shuffle(patient_ids)
+
     if p.CHOP_PATIENT:
         split_index = int(round(p.CHOP_PATIENT_VALUE * test_ratio, 0))
         max_index = int(p.CHOP_PATIENT_VALUE)
@@ -32,13 +44,19 @@ def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
         split_index = int(round((len(patient_ids)) * test_ratio, 0))
         max_index = int(len(patient_ids))
     
-    val_index = int(round((max_index + split_index)/2,0))
+    val_index = int(round((max_index + split_index) / 2, 0))
 
     PATIENT_SPLITS["train"] = set(patient_ids[:split_index])
     PATIENT_SPLITS["validation"] = set(patient_ids[split_index:val_index])
     PATIENT_SPLITS["test"] = set(patient_ids[val_index:max_index])
 
-    print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]), "Validation:", len(PATIENT_SPLITS["validation"]), "Test:", len(PATIENT_SPLITS["test"]))
+    print("Patient split initialized. Train:", len(PATIENT_SPLITS["train"]),
+          "Validation:", len(PATIENT_SPLITS["validation"]), "Test:", len(PATIENT_SPLITS["test"]))
+
+    # Guarda en JSON (convierte los sets a listas)
+    with open(json_path, "w") as f:
+        json.dump({k: list(v) for k, v in PATIENT_SPLITS.items()}, f, indent=2)
+
     return PATIENT_SPLITS
 
 def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS = dict(), dataset_type="test", block_id=set(), inference = p.INFERENCE):
@@ -49,14 +67,20 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
         data = data[:p.CHOP_DATA_VALUE]
 
     image_dir = os.path.join(abs_path, "archive", "images", "images")
+    image_files = os.listdir(image_dir)
     mask_dir = os.path.join(abs_path, "archive", "masks", "masks")
+    n_images = 0
+    for image_file in image_files:
+        patient_id = image_file.split('_')[0]
+        if patient_id in PATIENT_SPLITS[dataset_type]:
+                    n_images += 1        
 
-    with tqdm(total=len(data), desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, leave=True) as pbar:
+    with tqdm(total=int(n_images), desc=f"Uploading {dataset_type} dataset", dynamic_ncols=True, ncols=80, ascii=False, leave=True) as pbar:
         i = 0
         for _, row in data.iterrows():
             image_id = row["ImageId"]
             mask_name = row["MaskId"]
-
+            
             patient_id = image_id.split("_")[0]
 
             if not inference: 

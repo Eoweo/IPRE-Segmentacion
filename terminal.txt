@@ -3,6 +3,7 @@ conda activate pyenv
 srun python Segmentation.py
 squeue
 nvidia-smi
+nvitop
 ps aux | grep 2772201
 watch -n 1 nvidia-smi
 du -lh 

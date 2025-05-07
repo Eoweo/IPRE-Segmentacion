@@ -9,7 +9,7 @@ EARLY_STOP = False
 
 USE_PRETRAINED_MODEL = False  # Set to True to use a pre-trained model instead of training a new one
 RE_TRAIN_MODEL = False        # Set to True if you want to retrain a pre-trained model
-WORKERS = 8
+WORKERS = 10
 
 TEST_AVAILABLE = ["EPFL - Mitocondria Electron Microscopy",
                   "Chest CT Segmentation"] 
@@ -39,10 +39,10 @@ RATIO = 0.8
 CHOP_DATA = False
 CHOP_DATA_VALUE = 10000
 
-CHOP_PATIENT = False
-CHOP_PATIENT_VALUE = 30
+CHOP_PATIENT = True
+CHOP_PATIENT_VALUE = 8
 
-EPOCHS = 200
+EPOCHS = 2
 BATCH_SIZE = 16
 LEARNING_RATE = 3e-4
 SHUFFLE = True  

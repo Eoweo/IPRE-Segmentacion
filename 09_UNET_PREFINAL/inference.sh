@@ -14,7 +14,7 @@
 ## Here you can call your own script, for example:
 module load conda
 conda activate pyenv
-srun python histogram.py
+srun python inference.py
 
 ## or run a notebook:
 # jupyter notebook --port 30750 --no-browser
