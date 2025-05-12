@@ -59,7 +59,7 @@ def initialize_patient_splits(abs_path, test_ratio=p.RATIO):
 
     return PATIENT_SPLITS
 
-def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS = dict(), dataset_type="test", block_id=set(), inference = p.INFERENCE):
+def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS = dict(), dataset_type="test", block_id=set()):
 
     csv_path = os.path.join(abs_path, "archive", "train.csv")
     data = pd.read_csv(csv_path)
@@ -83,10 +83,9 @@ def load_jpg_dataset_generator(abs_path, target_size=(128, 128), PATIENT_SPLITS 
             
             patient_id = image_id.split("_")[0]
 
-            if not inference: 
-                if patient_id in block_id or (patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]): #pass if it's a block patient
-                    pbar.update(1)
-                    continue
+            if patient_id in block_id or (patient_id not in block_id and patient_id not in PATIENT_SPLITS[dataset_type]): #pass if it's a block patient
+                pbar.update(1)
+                continue
             i += 1
 
             image = Image.open(os.path.join(image_dir, image_id)).convert("L")
@@ -179,7 +178,7 @@ class MainDataset(Dataset):
             mask = augmented["mask"].astype(np.float32) / 255.0
         
         #make the tensors
-        image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
-        mask = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)
+        image = torch.from_numpy(image).float().unsqueeze(0)
+        mask = torch.from_numpy(mask).float().unsqueeze(0)
 
         return image, mask, id

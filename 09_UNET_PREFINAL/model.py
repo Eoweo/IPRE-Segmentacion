@@ -56,18 +56,17 @@ class UNet(nn.Module):
         self.out_conv = nn.Conv2d(64, out_channels, kernel_size=1)
 
     def forward(self, x):
-        device = x.device
-        s1, p1 = self.encoder1(x.to(device))
-        s2, p2 = self.encoder2(p1.to(device))
-        s3, p3 = self.encoder3(p2.to(device))
-        s4, p4 = self.encoder4(p3.to(device))
-
-        b = self.bridge(p4.to(device))
-
-        d1 = self.decoder1(b.to(device), s4.to(device))
-        d2 = self.decoder2(d1.to(device), s3.to(device))
-        d3 = self.decoder3(d2.to(device), s2.to(device))
-        d4 = self.decoder4(d3.to(device), s1.to(device))
-
-        outputs = torch.sigmoid(self.out_conv(d4.to(device))).squeeze(1)  # Binary (can be adapted for multiclass)
+        s1, p1 = self.encoder1(x)
+        s2, p2 = self.encoder2(p1)
+        s3, p3 = self.encoder3(p2)
+        s4, p4 = self.encoder4(p3)
+        
+        b = self.bridge(p4)
+        
+        d1 = self.decoder1(b, s4)
+        d2 = self.decoder2(d1, s3)
+        d3 = self.decoder3(d2, s2)
+        d4 = self.decoder4(d3, s1)
+        
+        outputs = torch.sigmoid(self.out_conv(d4)).squeeze(1)
         return outputs
